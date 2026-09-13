@@ -1,0 +1,20 @@
+# Go
+/backend/api
+*.test
+coverage.out
+coverage.raw.out
+coverage.html
+
+# Flutter
+.dart_tool/
+.packages
+build/
+*.lock
+!pubspec.lock
+coverage/
+
+# Tooling
+.idea/
+.vscode/
+.DS_Store
+*.log

@@ -1,0 +1,6 @@
+# Coverage exclusions — see docs/build/00-rules.md section 3.3.
+# Format: <import-path-fragment>  # <justification>
+# Only generated code, cmd/api wiring and vendored code may appear here.
+# Any new entry requires an ADR in docs/decisions/.
+
+github.com/rootlogic-lab/delivery/backend/cmd/api  # main wiring only, no business rules; covered by tests/e2e
