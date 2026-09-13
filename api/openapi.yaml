@@ -1,0 +1,78 @@
+openapi: 3.1.0
+info:
+  title: Decentralized Delivery Platform API
+  version: 0.1.0
+  description: |
+    Radius-scoped delivery marketplace for Bangladesh — food, grocery and pharmacy.
+
+    Responses are display-ready: money arrives as both a minor-unit integer and a
+    preformatted string, every breakdown line is precomputed, and any action the
+    client may gate carries an explicit capability flag with a reason. The client
+    performs no arithmetic and derives no permission
+    (docs/build/05-architecture.md 2.9).
+servers:
+  - url: http://localhost:8080
+    description: Local
+
+tags:
+  - name: health
+  - name: auth
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, example: ok }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived access token. See docs/build/phases/P04.md.
+
+  schemas:
+    Money:
+      type: object
+      description: |
+        Money is always transported as both a minor-unit integer and a
+        preformatted display string. The client renders `display` and never
+        computes with `minor`.
+      required: [minor, currency, display]
+      properties:
+        minor:    { type: integer, format: int64, example: 124000 }
+        currency: { type: string, example: BDT }
+        display:  { type: string, example: "৳ 1,240" }
+
+    Capability:
+      type: object
+      description: |
+        Whether the user may take an action, decided by the server. When
+        `allowed` is false, `reason` is human-readable and safe to show.
+      required: [allowed]
+      properties:
+        allowed: { type: boolean }
+        reason:  { type: string, example: "Minimum order for this zone is ৳ 250" }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:    { type: string, example: invalid_refresh_token }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+
+security:
+  - bearerAuth: []

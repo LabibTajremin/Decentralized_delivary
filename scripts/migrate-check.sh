@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# CI check 7 — every migration must apply and roll back cleanly.
+# Migrations are plain SQL pairs: NNNN_name.up.sql / NNNN_name.down.sql.
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIR="${REPO_ROOT}/backend/migrations"
+DB_URL="${DATABASE_URL:-postgres://delivery:delivery@localhost:5432/delivery?sslmode=disable}"
+
+shopt -s nullglob
+UP=( "${DIR}"/*.up.sql )
+if [[ ${#UP[@]} -eq 0 ]]; then
+  echo "migrate-check: no migrations yet (the geo schema arrives in P02); nothing to verify"
+  exit 0
+fi
+
+if ! command -v psql >/dev/null 2>&1; then
+  echo "migrate-check: psql not installed" >&2
+  exit 1
+fi
+
+for up in "${UP[@]}"; do
+  down="${up%.up.sql}.down.sql"
+  if [[ ! -f "${down}" ]]; then
+    echo "FAIL: ${up} has no matching .down.sql" >&2
+    exit 1
+  fi
+done
+
+echo "migrate-check: applying ${#UP[@]} migration(s)"
+for up in "${UP[@]}"; do psql "${DB_URL}" -v ON_ERROR_STOP=1 -f "${up}" >/dev/null; done
+
+echo "migrate-check: rolling back"
+for (( i=${#UP[@]}-1; i>=0; i-- )); do
+  down="${UP[$i]%.up.sql}.down.sql"
+  psql "${DB_URL}" -v ON_ERROR_STOP=1 -f "${down}" >/dev/null
+done
+
+echo "migrate-check: up and down both clean"

@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: delivery
+          POSTGRES_PASSWORD: delivery
+          POSTGRES_DB: delivery
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U delivery -d delivery"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://delivery:delivery@localhost:5432/delivery?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            backend/go.mod
+            backend/tests/go.mod
+
+      # Check 1
+      - name: go build
+        working-directory: backend
+        run: go build ./...
+
+      # Check 2
+      - name: go vet
+        working-directory: backend
+        run: go vet ./...
+
+      # Check 3
+      - name: golangci-lint
+        # action v7+ is required for golangci-lint v2, which is what
+        # backend/.golangci.yml is written against.
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.5.0
+          working-directory: backend
+          args: --timeout=5m
+
+      # Check 4 — layer and cross-module rules from 05-architecture.md 2.2 / 2.5.
+      # -count=1 is required: these tests read files outside their own package,
+      # so a cached PASS would hide a real violation.
+      - name: architecture lint
+        working-directory: backend/tests
+        run: go test ./unit/... -run 'TestDomainImportsNothingInternal|TestApplicationImportsDomainOnly|TestTransportDoesNotImportInfrastructure|TestCrossModuleImportsGoThroughExternal' -count=1 -v
+
+      # Checks 5 and 6 — tests run from the separate module, gated at 100%.
+      - name: tests and coverage gate
+        run: ./scripts/coverage-gate.sh
+
+      - name: upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/tests/coverage.out
+          if-no-files-found: ignore
+
+      # Check 7
+      - name: migrations up and down
+        run: ./scripts/migrate-check.sh
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: detect Flutter project
+        id: detect
+        run: |
+          if find frontend -name pubspec.yaml -print -quit | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No Flutter project yet (arrives in P17); Flutter checks skipped."
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.detect.outputs.present == 'true'
+        with:
+          channel: stable
+
+      # Check 8
+      - name: flutter analyze
+        if: steps.detect.outputs.present == 'true'
+        run: ./scripts/flutter-each.sh analyze
+
+      # Check 9 — thin-client rule (2.9). Runs even with no Dart sources so the
+      # step is never silently absent.
+      - name: thin-client lint
+        run: ./scripts/thin-client-lint.sh
+
+      # Check 9b
+      - name: APK size budget
+        if: steps.detect.outputs.present == 'true'
+        run: ./scripts/apk-size-check.sh
+
+      # Check 10
+      - name: flutter test with coverage gate
+        if: steps.detect.outputs.present == 'true'
+        run: ./scripts/flutter-coverage-gate.sh
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: [backend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            backend/go.mod
+            backend/tests/go.mod
+
+      - name: start stack
+        run: docker compose up -d postgres redis
+
+      # Check 11
+      - name: e2e suite
+        working-directory: backend/tests
+        env:
+          DATABASE_URL: postgres://delivery:delivery@localhost:5432/delivery?sslmode=disable
+          REDIS_URL: redis://localhost:6379/0
+        run: go test ./e2e/... -count=1
+
+      - name: stop stack
+        if: always()
+        run: docker compose down -v

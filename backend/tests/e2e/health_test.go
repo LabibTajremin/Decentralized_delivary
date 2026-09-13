@@ -1,0 +1,152 @@
+// Package e2e exercises the API as a running process.
+//
+// cmd/api is the one package excluded from the coverage gate
+// (backend/tests/coverage-exclusions.txt) on the grounds that it is wiring
+// covered by E2E. This file is what makes that claim true: it builds the real
+// binary, runs it, and drives it over HTTP.
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"syscall"
+	"testing"
+	"time"
+)
+
+// buildAPI compiles cmd/api into a temporary directory and returns its path.
+func buildAPI(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "api")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/api")
+	cmd.Dir = "../../"
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build cmd/api: %v\n%s", err, out)
+	}
+	return bin
+}
+
+// freePort asks the kernel for an unused TCP port.
+func freePort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+	_, port, err := net.SplitHostPort(l.Addr().String())
+	if err != nil {
+		t.Fatalf("split port: %v", err)
+	}
+	return port
+}
+
+// startAPI runs the binary and waits until it answers, returning the base URL
+// and a stop function that asserts a graceful shutdown.
+func startAPI(t *testing.T, bin string) (string, func()) {
+	t.Helper()
+	port := freePort(t)
+	cmd := exec.Command(bin)
+	cmd.Env = append(cmd.Environ(), "API_ADDR=127.0.0.1:"+port)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start api: %v", err)
+	}
+
+	base := "http://127.0.0.1:" + port
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		resp, err := client.Get(base + "/healthz")
+		if err == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatalf("api did not become ready: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return base, func() {
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			t.Errorf("signal api: %v", err)
+			return
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			var exitErr *exec.ExitError
+			if err != nil && !errors.As(err, &exitErr) {
+				t.Errorf("api exited badly: %v", err)
+			}
+			if exitErr != nil {
+				t.Errorf("api did not shut down cleanly: %v", exitErr)
+			}
+		case <-time.After(15 * time.Second):
+			_ = cmd.Process.Kill()
+			t.Error("api did not shut down within 15s of SIGTERM")
+		}
+	}
+}
+
+// TestHealthEndpoint asserts the liveness probe answers as the OpenAPI
+// contract in api/openapi.yaml describes it.
+func TestHealthEndpoint(t *testing.T) {
+	base, stop := startAPI(t, buildAPI(t))
+	defer stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Errorf("status field = %q, want %q", body.Status, "ok")
+	}
+}
+
+// TestGracefulShutdown asserts SIGTERM stops the server without a hard kill,
+// which is what lets a rolling deploy drain in-flight requests.
+func TestGracefulShutdown(t *testing.T) {
+	base, stop := startAPI(t, buildAPI(t))
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(base + "/healthz")
+	if err != nil {
+		t.Fatalf("pre-shutdown request: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	stop() // asserts a clean exit
+
+	if _, err := client.Get(base + "/healthz"); err == nil {
+		t.Error("server still answering after shutdown")
+	}
+}
