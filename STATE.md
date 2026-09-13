@@ -1,29 +1,30 @@
 # BUILD STATE
 last_updated: 2026-09-13T00:00:00Z
-current_phase: P00
-current_task: P00.T07
+current_phase: P01
+current_task: P02.T01
 current_branch: phase/00-foundation
-status: PHASE_COMPLETE_PENDING_MERGE
+status: IN_PROGRESS
 blocked: false
 blocker_reason: ""
 
 ## Phase status
-P00 AWAITING_MERGE  PR #1
-P01..P20 TODO
+P00 DONE   PR #1 (operator merges all phases at the end)
+P01 DONE   shared kernel, 100% covered
+P02..P20 TODO
 
 ## Current phase tasks
-P00.T01 DONE  repo layout, go.work, backend + tests modules
-P00.T02 DONE  build instruction split into docs/build/
-P00.T03 DONE  architecture guard tests (verified against a deliberate violation)
-P00.T04 DONE  thin-client lint + coverage gate (both verified against violations)
-P00.T05 DONE  docker compose (PostGIS + Redis), CI with all eleven checks
-P00.T06 DONE  STATE.md, README, ADR template + ADRs, OpenAPI skeleton, PR body
-P00.T07 DONE  verification green, PR #1 open at https://github.com/LabibTajremin/Decentralized_delivary/pull/1
+P01.T01 DONE  errs — error vocabulary
+P01.T02 DONE  clock — injectable time
+P01.T03 DONE  id — time-ordered Crockford base32 ids
+P01.T04 DONE  logging — JSON with central redaction
+P01.T05 DONE  paging — cursor pagination
+P01.T06 DONE  result — value-or-error for batch work
+P01.T07 DONE  config — process config, multi-error reporting
+P01.T08 DONE  tests at 100%, technical docs
 
 ## Coverage
-backend total: 100.0% (no coverable statements outside the exclusion list —
-cmd/api is the only excluded package and the modules are still skeletons)
-last verified: 2026-09-13T00:00:00Z
+backend total: 100.0% (real statements now — 7 shared packages)
+last verified: 2026-09-13
 
 ## Notes for next session
 
