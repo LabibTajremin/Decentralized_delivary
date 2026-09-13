@@ -53,9 +53,10 @@ jobs:
 
       # Check 3
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # action v7+ is required for golangci-lint v2, which is what
+        # backend/.golangci.yml is written against.
+        uses: golangci/golangci-lint-action@v7
         with:
-          # v2 — matches the schema of backend/.golangci.yml.
           version: v2.5.0
           working-directory: backend
           args: --timeout=5m
