@@ -148,10 +148,13 @@ func TestApplicationImportsDomainOnly(t *testing.T) {
 			if strings.HasPrefix(dep, "internal/shared") {
 				continue
 			}
-			if depMod == mod && (depLayer == "domain" || depLayer == "application") {
+			// A module's own contract/ is its public face, and the application
+			// layer is what implements it. That is an intra-module import, so
+			// it does not weaken the cross-module wall enforced below.
+			if depMod == mod && (depLayer == "domain" || depLayer == "application" || depLayer == "contract") {
 				continue
 			}
-			t.Errorf("%s: application may import only its own domain (and internal/shared), found %q", f.path, imp)
+			t.Errorf("%s: application may import only its own domain, contract and internal/shared, found %q", f.path, imp)
 		}
 	}
 }

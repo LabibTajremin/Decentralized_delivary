@@ -26,6 +26,13 @@ for up in "${UP[@]}"; do
   fi
 done
 
+# Start from a clean slate. CI runs against a fresh database, but a developer
+# re-running this locally would otherwise fail on "relation already exists",
+# which says nothing about whether the migration is correct.
+for (( i=${#UP[@]}-1; i>=0; i-- )); do
+  psql "${DB_URL}" -f "${UP[$i]%.up.sql}.down.sql" >/dev/null 2>&1 || true
+done
+
 echo "migrate-check: applying ${#UP[@]} migration(s)"
 for up in "${UP[@]}"; do psql "${DB_URL}" -v ON_ERROR_STOP=1 -f "${up}" >/dev/null; done
 

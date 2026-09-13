@@ -61,6 +61,20 @@ jobs:
           working-directory: backend
           args: --timeout=5m
 
+      # gofmt on the test module. golangci-lint above covers backend/ only,
+      # and the test module is a separate module with its own go.mod, so
+      # without this its formatting drifts unchecked.
+      - name: gofmt (test module)
+        working-directory: backend/tests
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
       # Check 4 — layer and cross-module rules from 05-architecture.md 2.2 / 2.5.
       # -count=1 is required: these tests read files outside their own package,
       # so a cached PASS would hide a real violation.

@@ -17,15 +17,20 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/rootlogic-lab/delivery/backend/internal/platform/assets"
+	"github.com/rootlogic-lab/delivery/backend/internal/shared/config"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	addr := os.Getenv("API_ADDR")
-	if addr == "" {
-		addr = ":8080"
+	cfg, err := config.Load(nil)
+	if err != nil {
+		logger.Error("configuration", "error", err)
+		os.Exit(1)
 	}
+	addr := cfg.APIAddr
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -33,6 +38,13 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
+
+	// Demo imagery is served only outside production, so generated placeholder
+	// logos can never appear beside real merchants.
+	if demo, demoErr := assets.Handler(cfg.IsProduction()); demoErr == nil {
+		mux.Handle(assets.Prefix, demo)
+		logger.Info("serving demo assets", "prefix", assets.Prefix)
+	}
 
 	srv := &http.Server{
 		Addr:              addr,
@@ -54,7 +66,7 @@ func main() {
 	<-ctx.Done()
 	logger.Info("shutting down")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGap)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
