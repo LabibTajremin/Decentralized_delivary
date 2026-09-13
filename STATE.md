@@ -3,12 +3,12 @@ last_updated: 2026-09-13T00:00:00Z
 current_phase: P00
 current_task: P00.T07
 current_branch: phase/00-foundation
-status: IN_PROGRESS
+status: PHASE_COMPLETE_PENDING_MERGE
 blocked: false
 blocker_reason: ""
 
 ## Phase status
-P00 IN_PROGRESS
+P00 AWAITING_MERGE  PR #1
 P01..P20 TODO
 
 ## Current phase tasks
@@ -18,7 +18,7 @@ P00.T03 DONE  architecture guard tests (verified against a deliberate violation)
 P00.T04 DONE  thin-client lint + coverage gate (both verified against violations)
 P00.T05 DONE  docker compose (PostGIS + Redis), CI with all eleven checks
 P00.T06 DONE  STATE.md, README, ADR template + ADRs, OpenAPI skeleton, PR body
-P00.T07 IN_PROGRESS  verification, PR, merge
+P00.T07 DONE  verification green, PR #1 open at https://github.com/LabibTajremin/Decentralized_delivary/pull/1
 
 ## Coverage
 backend total: 100.0% (no coverable statements outside the exclusion list —
