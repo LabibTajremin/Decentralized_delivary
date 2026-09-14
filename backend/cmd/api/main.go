@@ -19,6 +19,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	goredis "github.com/redis/go-redis/v9"
 
+	catapp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/application"
+	catpg "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/infrastructure/persistence/postgres"
+	cathttp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/transport/http"
 	cfgapp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/application"
 	cfgpg "github.com/rootlogic-lab/delivery/backend/internal/modules/config/infrastructure/persistence/postgres"
 	cfghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
@@ -197,6 +200,7 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// something an approved owner gets, not a prerequisite for applying. The
 	// approval queue sits behind the admin role.
 	merchantRepo := merchantpg.NewFromPool(pool)
+	merchantService := merchantapp.NewService(merchantRepo, systemClock)
 	merchanthttp.NewHandler(
 		merchantapp.NewRegistrationUseCase(merchantRepo, geoService, systemClock, ids),
 		merchantapp.NewOperationsUseCase(merchantRepo, systemClock),
@@ -204,6 +208,23 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		systemClock,
 		merchanthttp.Guard(authenticator.Authenticated()),
 		merchanthttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+	).Register(mux)
+
+	// Catalogue (P07). The owner routes sit behind authentication and check
+	// ownership against the merchant record; the customer's menu read is
+	// public, because browsing is what the app does before anyone signs in.
+	catRepo := catpg.NewFromPool(pool)
+	cathttp.NewHandler(
+		catapp.NewCategoryUseCase(catRepo, catRepo, merchantService, ids),
+		catapp.NewItemUseCase(catRepo, catRepo, merchantService, systemClock, ids),
+		catapp.NewOptionUseCase(catRepo, merchantService, ids),
+		catapp.NewComboUseCase(catRepo, catRepo, merchantService, ids),
+		catapp.NewService(catRepo, systemClock),
+		cathttp.Guard(authenticator.Authenticated()),
 		func(r *http.Request) (string, bool) {
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
 			return principal.UserID, ok

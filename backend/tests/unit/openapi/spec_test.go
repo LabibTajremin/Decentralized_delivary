@@ -19,6 +19,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	cathttp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/transport/http"
 	confighttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
 	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
@@ -75,6 +76,7 @@ func servedRoutes() []string {
 	routes = append(routes, identityhttp.Patterns()...)
 	routes = append(routes, userhttp.Patterns()...)
 	routes = append(routes, merchanthttp.Patterns()...)
+	routes = append(routes, cathttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }
@@ -159,6 +161,15 @@ func TestPublicOperationsAreExplicitlyMarked(t *testing.T) {
 		"/v1/auth/otp/request": true,
 		"/v1/auth/otp/verify":  true,
 		"/v1/auth/refresh":     true,
+
+		// Browsing a shop's menu needs no account. The app shows a menu before
+		// anyone signs in, and requiring a token to read one would put a
+		// sign-up wall in front of the thing customers came for. Nothing here
+		// exposes a shelf count, a visibility switch or an owner's details —
+		// see the split between PublicItem and Item in the spec.
+		"/v1/catalogue/{merchantId}/menu":             true,
+		"/v1/catalogue/{merchantId}/items/{itemId}":   true,
+		"/v1/catalogue/{merchantId}/combos/{comboId}": true,
 	}
 	for path, ops := range loadSpec(t).Paths {
 		for method, op := range ops {

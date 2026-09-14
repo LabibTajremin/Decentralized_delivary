@@ -1288,6 +1288,900 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/merchants/{merchantId}/catalogue/capabilities:
+    get:
+      tags: [catalogue]
+      summary: Which catalogue features this kind of shop has
+      description: |
+        Served rather than hard-coded in the merchant app, so the per-shop-type
+        rules live in one place. A pharmacy has no add-ons; a restaurant has no
+        unit of sale.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: What this shop's catalogue may contain
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogueCapabilities" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/categories:
+    get:
+      tags: [catalogue]
+      summary: List the sections of a shop's menu
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The sections, in the owner's order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryList" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      tags: [catalogue]
+      summary: Add a section to the menu
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryInput" }
+      responses:
+        "201":
+          description: The new section
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The menu has as many sections as we can keep
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/categories/{categoryId}:
+    put:
+      tags: [catalogue]
+      summary: Rename or reorder a section
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: categoryId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryInput" }
+      responses:
+        "200":
+          description: The updated section
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [catalogue]
+      summary: Remove an empty section
+      description: |
+        Refused while items still point at it. Cascading would silently delete a
+        shop's food; reassigning the items would be a decision the owner did not
+        make.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: categoryId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such section
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The section still has items in it
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/categories/{categoryId}/active:
+    post:
+      tags: [catalogue]
+      summary: Show or hide a section
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: categoryId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActiveInput" }
+      responses:
+        "200":
+          description: The updated section
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items:
+    get:
+      tags: [catalogue]
+      summary: List a shop's items, as its owner sees them
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: category, in: query, required: false, schema: { type: string } }
+        - { name: active, in: query, required: false, schema: { type: boolean } }
+        - { name: q, in: query, required: false, schema: { type: string }, description: Matches the item name }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: The items, in the owner's order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemList" }
+        "400":
+          description: That page is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      tags: [catalogue]
+      summary: Add an item to the menu
+      description: |
+        Which fields are allowed is decided by the shop's type. A grocery item
+        must state a unit of sale; only a pharmacy item may require a
+        prescription; add-ons are for restaurants. Sending a field this kind of
+        shop does not have is refused rather than silently dropped.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ItemInput" }
+      responses:
+        "201":
+          description: The new item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/bulk:
+    post:
+      tags: [catalogue]
+      summary: Change prices, stock or visibility for many items at once
+      description: |
+        Applied in one transaction. A half-applied re-pricing is a shop selling
+        at two price lists with nobody able to tell where the boundary fell, so
+        an unknown item id refuses the whole request rather than skipping a line.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkItemUpdate" }
+      responses:
+        "200":
+          description: The updated items
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemList" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/{itemId}:
+    get:
+      tags: [catalogue]
+      summary: One item, as its owner sees it
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      tags: [catalogue]
+      summary: Edit an item
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ItemInput" }
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [catalogue]
+      summary: Remove an item
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/{itemId}/active:
+    post:
+      tags: [catalogue]
+      summary: Show or hide an item
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActiveInput" }
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/{itemId}/stock:
+    put:
+      tags: [catalogue]
+      summary: Set an item's shelf count
+      description: Only for shop types that count stock — grocery and pharmacy.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StockInput" }
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/{itemId}/availability:
+    put:
+      tags: [catalogue]
+      summary: Set when an item may be ordered
+      description: |
+        Almost every item is always available; a breakfast menu that ends at
+        11am is the exception, so it is the thing that takes configuring.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityInput" }
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/{itemId}/variants:
+    put:
+      tags: [catalogue]
+      summary: Replace an item's variant groups
+      description: |
+        Groups are replaced wholesale, not edited one option at a time: a group
+        has invariants across its members that no intermediate state can hold.
+        Send an option's existing id to keep it, so carts holding it still
+        resolve.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OptionGroupsInput" }
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/items/{itemId}/addons:
+    put:
+      tags: [catalogue]
+      summary: Replace an item's add-on groups
+      description: Restaurant items only.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OptionGroupsInput" }
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/combos:
+    get:
+      tags: [catalogue]
+      summary: List a shop's combos
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: active, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: The combos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComboList" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      tags: [catalogue]
+      summary: Add a combo
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ComboInput" }
+      responses:
+        "201":
+          description: The new combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Combo" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/combos/{comboId}:
+    put:
+      tags: [catalogue]
+      summary: Edit a combo
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ComboInput" }
+      responses:
+        "200":
+          description: The updated combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Combo" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [catalogue]
+      summary: Remove a combo
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/combos/{comboId}/active:
+    post:
+      tags: [catalogue]
+      summary: Show or hide a combo
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActiveInput" }
+      responses:
+        "200":
+          description: The updated combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Combo" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/catalogue/combos/{comboId}/availability:
+    put:
+      tags: [catalogue]
+      summary: Set when a combo may be ordered
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityInput" }
+      responses:
+        "200":
+          description: The updated combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Combo" }
+        "400":
+          description: Details not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not your shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, section or item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/catalogue/{merchantId}/menu:
+    get:
+      tags: [catalogue]
+      summary: A shop's whole menu, as a customer sees it
+      description: |
+        One call rather than three: a menu screen needs all of it, and three
+        round trips on a village 2G connection is the difference between a shop
+        that opens and one the customer gives up on. Hidden sections take their
+        items with them.
+      security: []
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The menu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Menu" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The menu could not be read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/catalogue/{merchantId}/items/{itemId}:
+    get:
+      tags: [catalogue]
+      summary: One item, as a customer sees it
+      security: []
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicItem" }
+        "404":
+          description: No such item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The item could not be read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/catalogue/{merchantId}/combos/{comboId}:
+    get:
+      tags: [catalogue]
+      summary: One combo, as a customer sees it
+      security: []
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Combo" }
+        "404":
+          description: No such combo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The combo could not be read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1297,6 +2191,332 @@ components:
       description: Short-lived access token. See docs/build/phases/P04.md.
 
   schemas:
+    Unit:
+      type: string
+      description: How an item is sold. Required for grocery and pharmacy items.
+      enum: [piece, kg, g, litre, ml, pack, strip, bottle]
+
+    CatalogueCapabilities:
+      type: object
+      description: |
+        What a catalogue of this shop type may contain. This is the per-type
+        schema difference, served so the app never decides it for itself.
+      required: [merchant_type, variants, addons, combos, tracks_stock, requires_unit, prescriptions, units]
+      properties:
+        merchant_type: { $ref: "#/components/schemas/MerchantType" }
+        variants:      { type: boolean }
+        addons:        { type: boolean, description: Restaurants only }
+        combos:        { type: boolean }
+        tracks_stock:  { type: boolean, description: Grocery and pharmacy count a shelf }
+        requires_unit: { type: boolean }
+        prescriptions: { type: boolean, description: Pharmacy only }
+        units:
+          type: array
+          description: The units of sale to offer. Empty when this type has none.
+          items: { $ref: "#/components/schemas/Unit" }
+
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:       { type: string, example: "Kacchi and biryani" }
+        sort_order: { type: integer, description: Omit to append to the end }
+
+    Category:
+      type: object
+      required: [id, name, sort_order, active]
+      properties:
+        id:         { type: string }
+        name:       { type: string }
+        sort_order: { type: integer }
+        active:     { type: boolean }
+
+    CategoryList:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+
+    ActiveInput:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+
+    StockInput:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 0 }
+
+    AvailabilityInput:
+      type: object
+      description: |
+        Either always, or a weekly timetable keyed by weekday number with Sunday
+        as "0", each window written HH:MM-HH:MM in Bangladesh local time.
+        Windows may not overlap and may not wrap past midnight.
+      properties:
+        always: { type: boolean }
+        days:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string, example: "07:00-11:00" }
+
+    OptionInput:
+      type: object
+      required: [name]
+      properties:
+        id:
+          type: string
+          description: |
+            Send an existing option's id to keep it. A new id would invalidate
+            every cart holding that choice.
+        name:        { type: string, example: "Large" }
+        price_minor: { type: integer, format: int64, description: A delta for a variant, a price for an add-on }
+        available:   { type: boolean }
+
+    OptionGroupInput:
+      type: object
+      required: [name, options]
+      properties:
+        id:          { type: string }
+        name:        { type: string, example: "Size" }
+        required:    { type: boolean }
+        min_choices: { type: integer, minimum: 0 }
+        max_choices: { type: integer, minimum: 1 }
+        sort_order:  { type: integer }
+        options:
+          type: array
+          items: { $ref: "#/components/schemas/OptionInput" }
+
+    OptionGroupsInput:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/OptionGroupInput" }
+
+    Option:
+      type: object
+      required: [id, name, price, available]
+      properties:
+        id:        { type: string }
+        name:      { type: string }
+        price:     { $ref: "#/components/schemas/Money" }
+        available: { type: boolean }
+
+    OptionGroup:
+      type: object
+      required: [id, name, required, min_choices, max_choices, options]
+      properties:
+        id:          { type: string }
+        name:        { type: string }
+        required:    { type: boolean }
+        min_choices: { type: integer }
+        max_choices: { type: integer }
+        options:
+          type: array
+          items: { $ref: "#/components/schemas/Option" }
+
+    ItemInput:
+      type: object
+      description: |
+        Which fields are allowed depends on the shop's type - see
+        CatalogueCapabilities. A field this kind of shop does not have is
+        refused, not dropped, so an owner never loses something they typed.
+      required: [category_id, name, price_minor]
+      properties:
+        category_id: { type: string }
+        name:        { type: string }
+        description: { type: string }
+        image_url:   { type: string, description: A path we serve, or an https URL }
+        price_minor: { type: integer, format: int64, minimum: 0 }
+        sort_order:  { type: integer }
+        is_vegetarian:       { type: boolean, description: Restaurant only }
+        preparation_minutes: { type: integer, minimum: 0, description: Restaurant only }
+        unit:      { $ref: "#/components/schemas/Unit" }
+        pack_size: { type: string, example: "1 kg" }
+        brand:     { type: string }
+        generic_name:          { type: string, description: Pharmacy only }
+        strength:              { type: string, example: "500mg", description: Pharmacy only }
+        requires_prescription: { type: boolean, description: Pharmacy only }
+        stock_quantity:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: |
+            Omit to leave the shelf count alone. Only meaningful where the shop
+            type counts stock.
+
+    PublicItem:
+      type: object
+      description: An item as a customer sees it. No shelf count, no visibility switch.
+      required: [id, merchant_id, category_id, name, price, orderable, variant_groups, addon_groups]
+      properties:
+        id:          { type: string }
+        merchant_id: { type: string }
+        category_id: { type: string }
+        name:        { type: string }
+        description: { type: string }
+        image_url:   { type: string }
+        price:       { $ref: "#/components/schemas/Money" }
+        orderable:
+          type: boolean
+          description: Decided by the server from the item's switch, its stock and its schedule
+        unavailable_reason:
+          type: string
+          enum: [out_of_stock, not_available_now, unavailable]
+          description: Present only when orderable is false
+        unit:                  { $ref: "#/components/schemas/Unit" }
+        pack_size:             { type: string }
+        brand:                 { type: string }
+        generic_name:          { type: string }
+        strength:              { type: string }
+        requires_prescription: { type: boolean }
+        is_vegetarian:         { type: boolean }
+        preparation_minutes:   { type: integer }
+        variant_groups:
+          type: array
+          items: { $ref: "#/components/schemas/OptionGroup" }
+        addon_groups:
+          type: array
+          items: { $ref: "#/components/schemas/OptionGroup" }
+
+    Item:
+      allOf:
+        - $ref: "#/components/schemas/PublicItem"
+        - type: object
+          description: The owner's view, which adds what only an owner needs.
+          properties:
+            active:         { type: boolean }
+            stock_tracked:  { type: boolean }
+            stock_quantity: { type: integer, nullable: true }
+            availability:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+            sort_order: { type: integer }
+
+    ItemList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Item" }
+
+    BulkItemChange:
+      type: object
+      description: |
+        Every field is optional so "leave this alone" and "set this" stay
+        different instructions. A re-pricing that had to send stock counts back
+        would zero a shop's inventory the first time one was forgotten.
+      required: [item_id]
+      properties:
+        item_id:        { type: string }
+        price_minor:    { type: integer, format: int64, minimum: 0, nullable: true }
+        stock_quantity: { type: integer, minimum: 0, nullable: true }
+        active:         { type: boolean, nullable: true }
+
+    BulkItemUpdate:
+      type: object
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/BulkItemChange" }
+
+    ComboLineInput:
+      type: object
+      required: [item_id, quantity]
+      properties:
+        item_id:  { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 10 }
+
+    ComboInput:
+      type: object
+      required: [name, price_minor, lines]
+      properties:
+        name:        { type: string }
+        description: { type: string }
+        image_url:   { type: string }
+        price_minor: { type: integer, format: int64, minimum: 0 }
+        sort_order:  { type: integer }
+        lines:
+          type: array
+          minItems: 2
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ComboLineInput" }
+
+    ComboLine:
+      type: object
+      required: [item_id, quantity]
+      properties:
+        item_id:  { type: string }
+        name:     { type: string }
+        quantity: { type: integer }
+
+    Combo:
+      type: object
+      required: [id, merchant_id, name, price, lines]
+      properties:
+        id:          { type: string }
+        merchant_id: { type: string }
+        name:        { type: string }
+        description: { type: string }
+        image_url:   { type: string }
+        price:       { $ref: "#/components/schemas/Money" }
+        savings:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: |
+            What the bundle saves against buying its parts, computed by the
+            server. Absent on the owner's own view.
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/ComboLine" }
+        orderable:
+          type: boolean
+          description: False when any member item is unavailable
+        active:      { type: boolean }
+        availability:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+        sort_order: { type: integer }
+
+    ComboList:
+      type: object
+      required: [combos]
+      properties:
+        combos:
+          type: array
+          items: { $ref: "#/components/schemas/Combo" }
+
+    Menu:
+      type: object
+      description: A shop's whole catalogue, as a customer sees it.
+      required: [merchant_id, categories, items, combos]
+      properties:
+        merchant_id: { type: string }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PublicItem" }
+        combos:
+          type: array
+          items: { $ref: "#/components/schemas/Combo" }
+
+
     MerchantType:
       type: string
       enum: [restaurant, grocery, pharmacy]
