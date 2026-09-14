@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-13T00:00:00Z
-current_phase: P05
-current_task: P05.T01
+current_phase: P06
+current_task: P06.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -13,7 +13,8 @@ P01 DONE       shared kernel, 100% covered
 P02 DONE       geo module — domain, PostGIS repository, HTTP transport, OpenAPI, docs
 P03 DONE       config module — D5 registry, area resolution, audit log, admin API
 P04 DONE       identity — phone+OTP, JWT, Redis refresh rotation, RBAC, auto-login
-P05..P20 TODO
+P05 DONE       user — profile, address book, map pin, default address, area resolution
+P06..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -45,13 +46,20 @@ P04.T09 DONE  contract + service for consuming modules
 P04.T10 DONE  unit, integration (real Redis) and E2E tests at 100%
 P04.T11 DONE  docs/technical/identity.md, ADR 0005 addendum
 
-## Next phase
-P05 — User profile and addresses. Profile, address book, map pin, default
-address, address-to-area resolution through the geo contract.
+## P05 tasks
+P05.T01 DONE  domain — Profile, Address, Pin, Placement, ChooseDefault
+P05.T02 DONE  ports + external/geo seam for area resolution
+P05.T03 DONE  use cases — profile read/update, address CRUD, default handling
+P05.T04 DONE  migration 0004, repository with a one-default partial unique index
+P05.T05 DONE  UserContract (an addition to Appendix A) + service
+P05.T06 DONE  transport — /v1/me and /v1/me/addresses, caller-scoped
+P05.T07 DONE  unit, integration and E2E tests at 100%
+P05.T08 DONE  docs/technical/user.md, Appendix A note
 
-Identity owns authentication and nothing else: the account record is just
-(id, phone, role). The profile belongs to P05, and ports.UserDirectory is the
-seam between them.
+## Next phase
+P06 — Merchant. Nationwide registration, business details, documents, approval
+workflow, hours, holiday mode, and the three merchant types (restaurant,
+grocery, pharmacy). D1: a merchant may register from anywhere in Bangladesh.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,

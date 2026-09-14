@@ -32,6 +32,9 @@ import (
 	identitysms "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/infrastructure/sms"
 	identitytoken "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/infrastructure/token"
 	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
+	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
+	userpg "github.com/rootlogic-lab/delivery/backend/internal/modules/user/infrastructure/persistence/postgres"
+	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/assets"
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/httpx"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
@@ -169,6 +172,20 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		cfgapp.NewSetOverrideUseCase(cfgRepo, systemClock, ids),
 		cfgapp.NewClearOverrideUseCase(cfgRepo, systemClock, ids),
 		cfghttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
+	).Register(mux)
+
+	// User profile and addresses (P05). Every route acts on the caller's own
+	// data, so the user id comes from the verified token rather than the
+	// request.
+	userRepo := userpg.NewFromPool(pool)
+	userhttp.NewHandler(
+		userapp.NewProfileUseCase(userRepo),
+		userapp.NewAddressUseCase(userRepo, geoService, ids),
+		userhttp.Guard(authenticator.Authenticated()),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
 	).Register(mux)
 
 	// Demo imagery is served only outside production, so generated placeholder

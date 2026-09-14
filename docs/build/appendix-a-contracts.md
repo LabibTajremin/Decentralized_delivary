@@ -8,8 +8,27 @@
 Every module exposes exactly one public contract interface. This is the only surface other modules may call, through their own `external/` service.
 
 | Module | Contract | Consumed by |
-|---|---|---|
+|> **P05 addition.** The table above omitted a contract for the user module,
+> listing it only as a consumer of geo. Order needs to know where to deliver and
+> dispatch needs to know who receives the parcel, so `UserContract` was added.
+> The alternative — letting order read the user tables — breaks the rule that a
+> module never reaches into another's storage. See docs/technical/user.md.
+
+---|> **P05 addition.** The table above omitted a contract for the user module,
+> listing it only as a consumer of geo. Order needs to know where to deliver and
+> dispatch needs to know who receives the parcel, so `UserContract` was added.
+> The alternative — letting order read the user tables — breaks the rule that a
+> module never reaches into another's storage. See docs/technical/user.md.
+
+---|> **P05 addition.** The table above omitted a contract for the user module,
+> listing it only as a consumer of geo. Order needs to know where to deliver and
+> dispatch needs to know who receives the parcel, so `UserContract` was added.
+> The alternative — letting order read the user tables — breaks the rule that a
+> module never reaches into another's storage. See docs/technical/user.md.
+
+---|
 | geo | `GeoContract` | discovery, dispatch, pricing, merchant, user |
+| user | `UserContract` | order, dispatch, tracking — **added in P05** |
 | config | `ConfigContract` | every module |
 | identity | `IdentityContract` | every module |
 | merchant | `MerchantContract` | discovery, catalogue, order |
@@ -23,5 +42,11 @@ Every module exposes exactly one public contract interface. This is the only sur
 | tracking | `TrackingContract` | order, notification |
 | notification | `NotificationContract` | order, dispatch, identity |
 | review | `ReviewContract` | merchant, dispatch |
+
+> **P05 addition.** The table above omitted a contract for the user module,
+> listing it only as a consumer of geo. Order needs to know where to deliver and
+> dispatch needs to know who receives the parcel, so `UserContract` was added.
+> The alternative — letting order read the user tables — breaks the rule that a
+> module never reaches into another's storage. See docs/technical/user.md.
 
 ---

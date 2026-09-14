@@ -28,6 +28,12 @@ tags:
       effective configuration for an area states its COD limit, its fee bands
       and its discovery radius, which together describe how to price around the
       system.
+  - name: me
+    description: |
+      The signed-in customer's own profile and address book. Every route acts
+      on the caller's own data: the user id comes from the verified token, never
+      from the request, because an endpoint that takes one from the client is an
+      endpoint that will be asked for somebody else's home address.
   - name: geo
     description: |
       Administrative geography and spatial queries. Every distance in the system
@@ -549,6 +555,225 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/me:
+    get:
+      tags: [me]
+      summary: The signed-in customer's profile
+      description: |
+        Always succeeds for a signed-in user. A customer who has never opened
+        the profile screen gets an empty one rather than a 404 — otherwise every
+        client would have to treat "signed in but no profile" as a special case,
+        and some would treat it wrong.
+      responses:
+        "200":
+          description: The profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The profile could not be loaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      tags: [me]
+      summary: Update the profile
+      description: |
+        Only the fields present are changed. Omitting a field leaves it alone;
+        sending it empty clears it. Without that distinction a client updating
+        only the name would have to send the email back, and one that forgot
+        would silently erase it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:     { type: string, maxLength: 80 }
+                email:    { type: string }
+                language: { type: string, enum: [bn, en] }
+      responses:
+        "200":
+          description: The updated profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "400":
+          description: A field is too long, malformed, or an unsupported language
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The profile could not be saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/me/addresses:
+    get:
+      tags: [me]
+      summary: The customer's address book
+      responses:
+        "200":
+          description: The addresses, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [addresses]
+                properties:
+                  addresses:
+                    type: array
+                    items: { $ref: "#/components/schemas/Address" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The addresses could not be loaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      tags: [me]
+      summary: Save a new address
+      description: |
+        The address is resolved to a service area before it is saved, and one
+        that cannot be placed is refused. Config resolution, pricing and
+        dispatch all key off the area, so an unplaced address is an order that
+        reaches checkout and then cannot be priced.
+
+        The first address a customer saves becomes their default whether they
+        ask or not: a customer with one address and no default would be asked to
+        choose between one option.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddressInput" }
+      responses:
+        "201":
+          description: The saved address, with its resolved area
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Address" }
+        "400":
+          description: Missing details, an unset map pin, or a field too long
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: The pin falls outside every service area
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The address book is full
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/me/addresses/{id}:
+    put:
+      tags: [me]
+      summary: Replace an address
+      description: |
+        Re-resolved to a service area on every edit, not only when the pin
+        moves. A customer correcting a street name has usually nudged the pin
+        too, and an address whose stored area no longer matches its location
+        prices the wrong zone — silently.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddressInput" }
+      responses:
+        "200":
+          description: The updated address
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Address" }
+        "400":
+          description: Missing details or an unset map pin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: |
+            No such address for this customer. Another customer's address is
+            also a 404 — the caller learns nothing about whether it exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [me]
+      summary: Remove an address
+      description: |
+        If it was the default, the newest remaining address inherits, so a
+        customer with addresses always has a default.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such address for this customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/me/addresses/{id}/default:
+    post:
+      tags: [me]
+      summary: Make an address the default
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The address, now the default
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Address" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such address for this customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -603,6 +828,73 @@ components:
       required: [error]
       properties:
         error: { $ref: "#/components/schemas/Error" }
+
+    Profile:
+      type: object
+      required: [user_id, name, display_name, language]
+      properties:
+        user_id: { type: string }
+        name:
+          type: string
+          description: May be empty. A customer can order without giving one.
+        display_name:
+          type: string
+          description: |
+            Never empty. The server decides the fallback so two clients do not
+            invent two different greetings for the same nameless customer.
+        email:    { type: string }
+        language: { type: string, enum: [bn, en] }
+
+    AddressInput:
+      type: object
+      required: [recipient_name, recipient_phone, line1, lat, lng]
+      properties:
+        label: { type: string, maxLength: 40, example: Home }
+        recipient_name:
+          type: string
+          maxLength: 80
+          description: |
+            May differ from the account holder: people send food to their
+            parents, and the rider needs whoever will open the door.
+        recipient_phone: { type: string, example: "01712345678" }
+        line1:           { type: string, maxLength: 200 }
+        line2:           { type: string, maxLength: 200 }
+        instructions:    { type: string, maxLength: 300, example: "Third floor, blue gate" }
+        lat:
+          type: number
+          format: double
+          description: |
+            Where the rider goes. (0, 0) is refused: it is in the Gulf of
+            Guinea and is almost always an unset variable rather than a place
+            someone lives.
+        lng:          { type: number, format: double }
+        make_default: { type: boolean }
+
+    Address:
+      type: object
+      required: [id, label, recipient_name, recipient_phone, line1, single_line, lat, lng, area_code, district_code, division_code, is_default]
+      properties:
+        id:              { type: string }
+        label:           { type: string }
+        recipient_name:  { type: string }
+        recipient_phone: { type: string }
+        line1:           { type: string }
+        line2:           { type: string }
+        instructions:    { type: string }
+        single_line:
+          type: string
+          description: |
+            Composed by the server. Every surface that shows an address — the
+            app, a receipt, the rider's screen — shows this same string, because
+            a client that joins the parts itself will eventually join them
+            differently (2.9).
+        lat:           { type: number, format: double }
+        lng:           { type: number, format: double }
+        area_code:     { type: string, example: DHK-DHM }
+        area_name:     { type: string, example: Dhanmondi }
+        district_code: { type: string, example: DHK }
+        division_code: { $ref: "#/components/schemas/Area/properties/division_code" }
+        is_default:    { type: boolean }
 
     Role:
       type: string
