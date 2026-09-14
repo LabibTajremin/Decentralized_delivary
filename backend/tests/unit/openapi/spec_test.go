@@ -19,6 +19,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	confighttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
 )
 
@@ -63,6 +64,7 @@ func loadSpec(t *testing.T) spec {
 func servedRoutes() []string {
 	routes := []string{"GET /healthz"}
 	routes = append(routes, geohttp.Patterns()...)
+	routes = append(routes, confighttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }

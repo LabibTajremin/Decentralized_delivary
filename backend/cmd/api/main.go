@@ -18,11 +18,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	cfgapp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/application"
+	cfgpg "github.com/rootlogic-lab/delivery/backend/internal/modules/config/infrastructure/persistence/postgres"
+	cfghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	geoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application"
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/assets"
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/httpx"
+	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/config"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/id"
 )
@@ -96,6 +100,17 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) htt
 	)
 	geohttp.NewHandler(geoService).Register(mux)
 
+	// Config (P03). The business rules an operator tunes at runtime, as
+	// distinct from the deploy-time settings in config.Config above.
+	ids := id.NewGen(nil, nil)
+	systemClock := clock.System{}
+	cfgRepo := cfgpg.NewFromPool(pool)
+	cfghttp.NewHandler(
+		cfgapp.NewResolveUseCase(cfgRepo),
+		cfgapp.NewSetOverrideUseCase(cfgRepo, systemClock, ids),
+		cfgapp.NewClearOverrideUseCase(cfgRepo, systemClock, ids),
+	).Register(mux)
+
 	// Demo imagery is served only outside production, so generated placeholder
 	// logos can never appear beside real merchants.
 	if demo, demoErr := assets.Handler(cfg.IsProduction()); demoErr == nil {
@@ -104,7 +119,7 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) htt
 	}
 
 	return httpx.Chain(mux,
-		httpx.RequestID(id.NewGen(nil, nil)),
+		httpx.RequestID(ids),
 		httpx.Recover(logger),
 		httpx.Logging(logger),
 		httpx.SecurityHeaders(),

@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-13T00:00:00Z
-current_phase: P03
-current_task: P03.T01
+current_phase: P04
+current_task: P04.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -11,7 +11,8 @@ blocker_reason: ""
 P00 DONE       foundation, gates, CI
 P01 DONE       shared kernel, 100% covered
 P02 DONE       geo module — domain, PostGIS repository, HTTP transport, OpenAPI, docs
-P03..P20 TODO
+P03 DONE       config module — D5 registry, area resolution, audit log, admin API
+P04..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -21,10 +22,20 @@ P02.T04 DONE  geo HTTP transport, mounted in cmd/api behind the middleware chain
 P02.T05 DONE  OpenAPI paths + schemas, with a drift check in CI
 P02.T06 DONE  docs/technical/geo.md
 
+## P03 tasks
+P03.T01 DONE  domain — six value kinds, scopes, the Appendix B registry
+P03.T02 DONE  resolution area -> district -> division -> global
+P03.T03 DONE  use cases — set/clear with immutability, tuner limits, pins, audit
+P03.T04 DONE  migration 0002, PostgreSQL repository with transactional audit
+P03.T05 DONE  contract + service, consumed by pricing/discovery/dispatch/order
+P03.T06 DONE  admin HTTP transport, OpenAPI, docs/technical/config.md
+P03.T07 DONE  unit, integration and E2E tests at 100%
+
 ## Next phase
-P03 — Config module. Per-area variable store with resolution order
-area -> district -> division -> global, admin overrides, change audit (D5).
-See docs/build/appendix-b-config.md.
+P04 — Identity and auth. Phone+OTP, JWT access tokens, Redis-backed refresh
+rotation with reuse detection, silent auto-login, RBAC middleware, rate
+limiting. The full spec is already written in docs/build/phases/P04.md and
+docs/decisions/0005-redis-session-store.md.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,

@@ -17,6 +17,12 @@ servers:
 tags:
   - name: health
   - name: auth
+  - name: config
+    description: |
+      Business rules an operator tunes at runtime — radius, fees, COD limits,
+      dispatch bounds. Resolved per area (Appendix B) and never a deploy-time
+      setting: a rule that needs a redeploy to change is a rule in the wrong
+      place (ADR 0004).
   - name: geo
     description: |
       Administrative geography and spatial queries. Every distance in the system
@@ -149,6 +155,149 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/config/definitions:
+    get:
+      tags: [config]
+      summary: Every configurable variable with its bounds
+      description: |
+        The admin UI reads this to build its editor. Bounds and the
+        auto-tunable flag are included so an admin knows what is allowed before
+        submitting rather than after being rejected.
+
+        `discovery.division_ceiling` appears with `immutable: true`. It is
+        listed so it is visible and auditable, not so it is adjustable — it
+        enforces D3 and nothing may change it.
+      security: []
+      responses:
+        "200":
+          description: The full variable registry
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [definitions]
+                properties:
+                  definitions:
+                    type: array
+                    items: { $ref: "#/components/schemas/ConfigDefinition" }
+        "503":
+          description: The settings store is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/config/effective:
+    get:
+      tags: [config]
+      summary: The settings in force for one place
+      description: |
+        Resolves every variable for a placement, applying overrides
+        area → district → division → global. Each value reports the scope it
+        came from, which is what an admin needs to understand why a value is
+        what it is.
+      security: []
+      parameters:
+        - { name: area,     in: query, schema: { type: string }, example: DHK-DHM }
+        - { name: district, in: query, schema: { type: string }, example: DHK }
+        - { name: division, in: query, schema: { type: string }, example: DHA }
+      responses:
+        "200":
+          description: Every variable, resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [values]
+                properties:
+                  values:
+                    type: array
+                    items: { $ref: "#/components/schemas/EffectiveValue" }
+        "503":
+          description: The settings store is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/config/overrides:
+    put:
+      tags: [config]
+      summary: Set a variable at one scope
+      description: |
+        Applies an override and records it in the audit log, atomically. A
+        reason is required: a log that answers "what changed" but never "why"
+        does not answer the question people actually ask.
+
+        Values are sent as strings, not JSON numbers. Money is in minor units
+        and must never round-trip through a float (2.9).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetConfigOverride" }
+      responses:
+        "200":
+          description: The change that was applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfigChange" }
+        "400":
+          description: |
+            The value is out of bounds, the wrong type, unreadable, or no
+            reason was given.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: |
+            The variable is immutable (`immutable_config_key`), or the
+            auto-tuner attempted a variable it may not change
+            (`not_auto_tunable`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such variable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: An admin has pinned this variable against auto-tuning
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/config/override:
+    delete:
+      tags: [config]
+      summary: Reset a variable to the next scope up
+      description: |
+        Removes one override so the next level applies again, and records the
+        removal. The global value is the fallback that makes resolution total
+        and cannot be removed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClearConfigOverride" }
+      responses:
+        "200":
+          description: The change that was applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfigChange" }
+        "400":
+          description: The scope is invalid, no reason was given, or the global value was targeted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such variable, or no override at that scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -203,6 +352,89 @@ components:
       required: [error]
       properties:
         error: { $ref: "#/components/schemas/Error" }
+
+    ConfigScopeLevel:
+      type: string
+      enum: [area, district, division, global]
+      description: |
+        How specific a setting is. Resolution goes area → district → division →
+        global and the first match wins (Appendix B).
+
+    ConfigValueType:
+      type: string
+      enum: [count, bool, ratio, money_minor, distance_m, duration_s]
+      description: |
+        Money, distance and duration are separate types rather than all being
+        "a number", because the unit is the part people get wrong. Money is
+        always minor units; distance is always metres.
+
+    ConfigDefinition:
+      type: object
+      required: [key, type, default, auto_tunable, immutable, purpose]
+      properties:
+        key:          { type: string, example: pricing.delivery_base }
+        type:         { $ref: "#/components/schemas/ConfigValueType" }
+        unit:         { type: string, example: BDT }
+        default:      { type: string, example: "4000" }
+        minimum:      { type: string, description: Absent for booleans, which have no order. }
+        maximum:      { type: string }
+        auto_tunable: { type: boolean, description: Whether ALG-09 may adjust it. }
+        immutable:
+          type: boolean
+          description: |
+            True only for discovery.division_ceiling. Nothing may change it —
+            not an admin, not the tuner, not a direct database write.
+        purpose:      { type: string }
+
+    EffectiveValue:
+      type: object
+      required: [key, type, value, source]
+      properties:
+        key:    { type: string }
+        type:   { $ref: "#/components/schemas/ConfigValueType" }
+        value:  { type: string, description: Canonical text form; parse according to `type`. }
+        source:
+          type: string
+          example: "area:DHK-DHM"
+          description: The scope this value came from, or "global".
+
+    SetConfigOverride:
+      type: object
+      required: [key, level, value, reason]
+      properties:
+        key:   { type: string, example: pricing.delivery_base }
+        level: { $ref: "#/components/schemas/ConfigScopeLevel" }
+        code:  { type: string, description: The area, district or division code. Must be empty for global. }
+        value: { type: string, example: "6000" }
+        pinned:
+          type: boolean
+          description: Stop the auto-tuner changing this variable in this scope.
+        reason:   { type: string, example: "Dhanmondi traffic has got worse" }
+        actor_id: { type: string, description: The admin making the change. }
+
+    ClearConfigOverride:
+      type: object
+      required: [key, level, reason]
+      properties:
+        key:      { type: string }
+        level:    { $ref: "#/components/schemas/ConfigScopeLevel" }
+        code:     { type: string }
+        reason:   { type: string }
+        actor_id: { type: string }
+
+    ConfigChange:
+      type: object
+      description: One entry in the configuration audit log (D5).
+      required: [id, key, scope, old_value, new_value, actor, reason, changed_at]
+      properties:
+        id:        { type: string }
+        key:       { type: string }
+        scope:     { type: string, example: "area:DHK-DHM" }
+        old_value: { type: string }
+        new_value: { type: string }
+        actor:     { type: string, example: "admin:adm_1" }
+        reason:    { type: string }
+        changed_at: { type: string, format: date-time }
 
     Area:
       type: object
