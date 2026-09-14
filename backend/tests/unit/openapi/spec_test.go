@@ -21,6 +21,7 @@ import (
 
 	confighttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
+	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
 )
 
 type spec struct {
@@ -31,8 +32,12 @@ type spec struct {
 }
 
 type operation struct {
-	Summary    string         `yaml:"summary"`
-	Responses  map[string]any `yaml:"responses"`
+	Summary string `yaml:"summary"`
+	// Security is a pointer so "absent" and "explicitly empty" stay distinct:
+	// an empty list declares an endpoint public, while absence inherits the
+	// document's default of requiring a bearer token.
+	Security   *[]map[string]any `yaml:"security"`
+	Responses  map[string]any    `yaml:"responses"`
 	Parameters []struct {
 		Name     string `yaml:"name"`
 		In       string `yaml:"in"`
@@ -65,6 +70,7 @@ func servedRoutes() []string {
 	routes := []string{"GET /healthz"}
 	routes = append(routes, geohttp.Patterns()...)
 	routes = append(routes, confighttp.Patterns()...)
+	routes = append(routes, identityhttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }
@@ -129,6 +135,37 @@ func TestEveryOperationDocumentsItsFailures(t *testing.T) {
 			}
 			if strings.TrimSpace(op.Summary) == "" {
 				t.Errorf("%s %s has no summary", strings.ToUpper(method), path)
+			}
+		}
+	}
+}
+
+// TestEveryProtectedOperationDeclaresItsAuth: an endpoint whose spec omits
+// security reads as public to a generated client, which would then omit the
+// Authorization header and get a 401 it has no handling for.
+func TestPublicOperationsAreExplicitlyMarked(t *testing.T) {
+	// The only endpoints that can work before a token exists. Rule 2.7 forbids
+	// an implicitly-public endpoint, so this list is the whole set and a new
+	// entry appearing here is a decision worth noticing.
+	publicPaths := map[string]bool{
+		"/healthz":             true,
+		"/v1/geo/resolve":      true,
+		"/v1/geo/merchants":    true,
+		"/v1/geo/distance":     true,
+		"/v1/auth/otp/request": true,
+		"/v1/auth/otp/verify":  true,
+		"/v1/auth/refresh":     true,
+	}
+	for path, ops := range loadSpec(t).Paths {
+		for method, op := range ops {
+			declaredPublic := op.Security != nil && len(*op.Security) == 0
+			if publicPaths[path] && !declaredPublic {
+				t.Errorf("%s %s is public but does not declare `security: []`",
+					strings.ToUpper(method), path)
+			}
+			if !publicPaths[path] && declaredPublic {
+				t.Errorf("%s %s declares itself public but is not in the public list",
+					strings.ToUpper(method), path)
 			}
 		}
 	}

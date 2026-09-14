@@ -58,8 +58,23 @@ func freePort(t *testing.T) string {
 // here rather than as a crash on someone's first deploy.
 func startAPI(t *testing.T, bin string, extraEnv ...string) (string, func()) {
 	t.Helper()
+	return startAPIWithOutput(t, bin, nil, extraEnv...)
+}
+
+// startAPIWithOutput is startAPI with the server's stdout copied somewhere the
+// test can read.
+//
+// The auth tests use it to pick up the one-time code the development SMS sender
+// logs — the same route a developer takes to sign in locally, rather than a
+// back door that exists only for tests.
+func startAPIWithOutput(t *testing.T, bin string, output io.Writer, extraEnv ...string) (string, func()) {
+	t.Helper()
 	port := freePort(t)
 	cmd := exec.Command(bin)
+	if output != nil {
+		cmd.Stdout = output
+		cmd.Stderr = output
+	}
 	cmd.Env = append(cmd.Environ(),
 		"API_ADDR=127.0.0.1:"+port,
 		// The process does not connect to either at startup; they are required
@@ -176,24 +191,32 @@ func TestDemoAssetsAreServedOutsideProduction(t *testing.T) {
 	}
 }
 
-// TestDemoAssetsAreAbsentInProduction is the same guard from the other side:
-// a production binary must not serve placeholder merchant logos at all.
-func TestDemoAssetsAreAbsentInProduction(t *testing.T) {
-	base, stop := startAPI(t, buildAPI(t),
+// TestProductionRefusesToStartWithoutAnSMSGateway.
+//
+// This replaced an earlier test that started a production server to check demo
+// assets were absent. It could no longer start one — because P04 made the
+// development SMS sender refuse to be constructed in production, which is the
+// stronger guarantee: a production deployment with no gateway would otherwise
+// accept sign-ins and write every one-time code to the application log, where
+// far more people can read it than should ever be able to sign in as a
+// customer. The demo-asset rule is asserted in the unit tests instead.
+func TestProductionRefusesToStartWithoutAnSMSGateway(t *testing.T) {
+	cmd := exec.Command(buildAPI(t))
+	cmd.Env = []string{
+		"API_ADDR=127.0.0.1:0",
 		"APP_ENV=production",
 		"PUBLIC_BASE_URL=https://api.example.com",
 		"JWT_SIGNING_KEY=a-real-production-signing-key-at-least-32-chars",
-	)
-	defer stop()
-
-	resp, err := http.Get(base + "/static/demo/merchants/MER-DEMO-0001-logo.png")
-	if err != nil {
-		t.Fatalf("GET demo asset: %v", err)
+		"DATABASE_URL=postgres://delivery:delivery@127.0.0.1:5432/delivery?sslmode=disable",
+		"REDIS_URL=redis://127.0.0.1:6379/0",
+		"PATH=" + os.Getenv("PATH"),
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want 404: a production server must not serve demo imagery", resp.StatusCode)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("a production server started with no SMS gateway configured:\n%s", out)
+	}
+	if !strings.Contains(string(out), "SMS") && !strings.Contains(string(out), "sms") {
+		t.Errorf("the refusal does not mention SMS, so an operator cannot tell what to fix:\n%s", out)
 	}
 }
 

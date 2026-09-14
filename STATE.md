@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-13T00:00:00Z
-current_phase: P04
-current_task: P04.T01
+current_phase: P05
+current_task: P05.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -12,7 +12,8 @@ P00 DONE       foundation, gates, CI
 P01 DONE       shared kernel, 100% covered
 P02 DONE       geo module — domain, PostGIS repository, HTTP transport, OpenAPI, docs
 P03 DONE       config module — D5 registry, area resolution, audit log, admin API
-P04..P20 TODO
+P04 DONE       identity — phone+OTP, JWT, Redis refresh rotation, RBAC, auto-login
+P05..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -31,11 +32,26 @@ P03.T05 DONE  contract + service, consumed by pricing/discovery/dispatch/order
 P03.T06 DONE  admin HTTP transport, OpenAPI, docs/technical/config.md
 P03.T07 DONE  unit, integration and E2E tests at 100%
 
+## P04 tasks
+P04.T01 DONE  domain — Phone, OTP, Role, Session, RefreshToken, Claims
+P04.T02 DONE  ports — OTPStore, SessionStore, TokenSigner, RateLimiter, SMSSender, UserDirectory
+P04.T03 DONE  use cases — RequestOTP, VerifyOTP, RefreshSession, Logout, ListSessions
+P04.T04 DONE  infrastructure — Redis stores with atomic Lua, hand-rolled HS256, log SMS sender
+P04.T05 DONE  migration 0003, account directory with a race-free upsert
+P04.T06 DONE  transport — /v1/auth endpoints, RBAC middleware, explicit route table
+P04.T07 DONE  seven auth.* config keys added to Appendix B, none auto-tunable
+P04.T08 DONE  config endpoints put behind the admin role
+P04.T09 DONE  contract + service for consuming modules
+P04.T10 DONE  unit, integration (real Redis) and E2E tests at 100%
+P04.T11 DONE  docs/technical/identity.md, ADR 0005 addendum
+
 ## Next phase
-P04 — Identity and auth. Phone+OTP, JWT access tokens, Redis-backed refresh
-rotation with reuse detection, silent auto-login, RBAC middleware, rate
-limiting. The full spec is already written in docs/build/phases/P04.md and
-docs/decisions/0005-redis-session-store.md.
+P05 — User profile and addresses. Profile, address book, map pin, default
+address, address-to-area resolution through the geo contract.
+
+Identity owns authentication and nothing else: the account record is just
+(id, phone, role). The profile belongs to P05, and ports.UserDirectory is the
+seam between them.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -76,6 +92,11 @@ exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (AD
   the GitHub MCP tools instead of the `gh` CLI.
 - The operator merges everything once, at the end. Do not merge PRs, and do
   not stop to ask for opinions.
+- Local dependencies: ./scripts/dev-postgres.sh and ./scripts/dev-redis.sh
+  start both, idempotently. The E2E suite needs DATABASE_URL and REDIS_URL.
+- Redis is shared across test runs and its TTLs outlive them, so tests that
+  touch rate limits or lockouts must use a per-run phone number. The Postgres
+  schema is rebuilt per E2E test; Redis is not.
 - Auth requirement (binding): JWT access token, Redis-backed refresh token
   with rotation and reuse detection, and **silent auto-login when a valid
   refresh token exists**. Spec is written in `docs/build/phases/P04.md` and

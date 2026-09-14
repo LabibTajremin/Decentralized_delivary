@@ -47,6 +47,21 @@ const (
 	DispatchMaxConcurrent   Key = "dispatch.max_concurrent_jobs"
 	OrderCancellationWindow Key = "order.cancellation_window"
 	OrderCODLimit           Key = "order.cod_limit"
+
+	// Auth limits (P04). These are business rules, not deployment settings:
+	// an operator seeing OTP abuse in one division must be able to tighten the
+	// limit there without a redeploy, and without tightening it everywhere.
+	AuthOTPRequestsPerHour Key = "auth.otp_requests_per_hour"
+	AuthOTPVerifyAttempts  Key = "auth.otp_verify_attempts"
+	AuthOTPLockoutWindow   Key = "auth.otp_lockout_window"
+	AuthOTPTTL             Key = "auth.otp_ttl"
+	// These two are flagged by gosec's hardcoded-credential rule because the
+	// identifier contains "token" and the value is a literal. They are the
+	// names of configuration keys, not secrets: the signing key lives in the
+	// environment and never in the database (ADR 0004).
+	AuthAccessTokenTTL  Key = "auth.access_token_ttl"  //nolint:gosec // a config key name, not a credential
+	AuthRefreshTokenTTL Key = "auth.refresh_token_ttl" //nolint:gosec // a config key name, not a credential
+	AuthMaxSessions     Key = "auth.max_sessions_per_user"
 )
 
 // Definition describes one variable.
@@ -184,6 +199,47 @@ var definitions = []Definition{
 		Key: OrderCODLimit, Kind: KindMoney, Default: taka(5000),
 		AutoTunable: true, Min: taka(500), Max: taka(50000),
 		Purpose: "Maximum value of a cash-on-delivery order",
+	},
+	{
+		Key: AuthOTPRequestsPerHour, Kind: KindCount, Default: count(5),
+		AutoTunable: false, Min: count(1), Max: count(20),
+		Purpose: "OTP requests allowed per phone number per hour",
+	},
+	{
+		Key: AuthOTPVerifyAttempts, Kind: KindCount, Default: count(5),
+		AutoTunable: false, Min: count(3), Max: count(10),
+		Purpose: "Wrong OTP entries before the number is locked out. " +
+			"The minimum is 3: fewer would lock out people who simply mistype.",
+	},
+	{
+		Key: AuthOTPLockoutWindow, Kind: KindDuration, Default: duration(900),
+		AutoTunable: false, Min: duration(60), Max: duration(3600),
+		Purpose: "How long a number stays locked out after too many wrong codes",
+	},
+	{
+		Key: AuthOTPTTL, Kind: KindDuration, Default: duration(300),
+		AutoTunable: false, Min: duration(60), Max: duration(600),
+		Purpose: "How long an OTP stays valid. The maximum is deliberately " +
+			"short: a code that lives for an hour is a code an attacker has an " +
+			"hour to guess.",
+	},
+	{
+		Key: AuthAccessTokenTTL, Kind: KindDuration, Default: duration(900),
+		AutoTunable: false, Min: duration(300), Max: duration(3600),
+		Purpose: "Access token lifetime. Access tokens are stateless, so this " +
+			"is the blast radius of a revoked session — an hour is the most " +
+			"anyone should accept.",
+	},
+	{
+		Key: AuthRefreshTokenTTL, Kind: KindDuration, Default: duration(5_184_000),
+		AutoTunable: false, Min: duration(86_400), Max: duration(15_552_000),
+		Purpose: "Refresh token lifetime (60 days by default). This is how " +
+			"long a user stays silently signed in without opening the app.",
+	},
+	{
+		Key: AuthMaxSessions, Kind: KindCount, Default: count(5),
+		AutoTunable: false, Min: count(1), Max: count(20),
+		Purpose: "Active devices per user. The oldest session is evicted beyond this.",
 	},
 }
 

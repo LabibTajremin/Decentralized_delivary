@@ -148,13 +148,21 @@ func TestApplicationImportsDomainOnly(t *testing.T) {
 			if strings.HasPrefix(dep, "internal/shared") {
 				continue
 			}
-			// A module's own contract/ is its public face, and the application
-			// layer is what implements it. That is an intra-module import, so
-			// it does not weaken the cross-module wall enforced below.
-			if depMod == mod && (depLayer == "domain" || depLayer == "application" || depLayer == "contract") {
+			// Within its own module, application may reach domain, its own
+			// contract (which it implements), and external/.
+			//
+			// external/ is the point: 2.5 requires that extracting a module
+			// into a real service changes only that one file, which is only
+			// true if the application layer calls other modules *through* it.
+			// Allowing it here does not weaken the cross-module wall —
+			// TestCrossModuleImportsGoThroughExternal still requires that
+			// external/ is the only thing reaching another module, and that it
+			// reaches only that module's contract.
+			if depMod == mod && (depLayer == "domain" || depLayer == "application" ||
+				depLayer == "contract" || depLayer == "external") {
 				continue
 			}
-			t.Errorf("%s: application may import only its own domain, contract and internal/shared, found %q", f.path, imp)
+			t.Errorf("%s: application may import only its own domain, contract, external and internal/shared, found %q", f.path, imp)
 		}
 	}
 }

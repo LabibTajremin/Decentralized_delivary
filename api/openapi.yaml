@@ -23,6 +23,11 @@ tags:
       dispatch bounds. Resolved per area (Appendix B) and never a deploy-time
       setting: a rule that needs a redeploy to change is a rule in the wrong
       place (ADR 0004).
+
+      Every endpoint here requires the **admin** role, reads included: the
+      effective configuration for an area states its COD limit, its fee bands
+      and its discovery radius, which together describe how to price around the
+      system.
   - name: geo
     description: |
       Administrative geography and spatial queries. Every distance in the system
@@ -167,7 +172,6 @@ paths:
         `discovery.division_ceiling` appears with `immutable: true`. It is
         listed so it is visible and auditable, not so it is adjustable — it
         enforces D3 and nothing may change it.
-      security: []
       responses:
         "200":
           description: The full variable registry
@@ -195,7 +199,6 @@ paths:
         area → district → division → global. Each value reports the scope it
         came from, which is what an admin needs to understand why a value is
         what it is.
-      security: []
       parameters:
         - { name: area,     in: query, schema: { type: string }, example: DHK-DHM }
         - { name: district, in: query, schema: { type: string }, example: DHK }
@@ -229,7 +232,6 @@ paths:
 
         Values are sent as strings, not JSON numbers. Money is in minor units
         and must never round-trip through a float (2.9).
-      security: []
       requestBody:
         required: true
         content:
@@ -275,7 +277,6 @@ paths:
         Removes one override so the next level applies again, and records the
         removal. The global value is the fallback that makes resolution total
         and cannot be removed.
-      security: []
       requestBody:
         required: true
         content:
@@ -294,6 +295,256 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: No such variable, or no override at that scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/auth/otp/request:
+    post:
+      tags: [auth]
+      summary: Send a one-time code to a phone number
+      description: |
+        Public and rate-limited. The response reveals neither the code nor
+        whether the number has an account — the second would let anyone
+        enumerate which numbers are registered.
+
+        `expires_in` and `resend_after` are the server's numbers; the client
+        counts down with them rather than holding its own idea of the TTL (2.9).
+      security: []
+      parameters:
+        - { name: area,     in: query, schema: { type: string } }
+        - { name: district, in: query, schema: { type: string } }
+        - { name: division, in: query, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  example: "01712345678"
+                  description: |
+                    A Bangladeshi mobile number. 01712345678, 8801712345678 and
+                    +8801712345678 are all accepted and normalise to one
+                    identity, so a caller cannot double a rate-limit allowance
+                    by alternating format.
+      responses:
+        "200":
+          description: A code has been sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [phone, expires_in, resend_after]
+                properties:
+                  phone:
+                    type: string
+                    example: "+88017*****678"
+                    description: Masked, so the screen can confirm the number without showing it.
+                  expires_in:   { type: integer, format: int64, example: 300 }
+                  resend_after: { type: integer, format: int64, example: 720 }
+        "400":
+          description: Not a valid Bangladeshi mobile number
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: |
+            Too many requests for this number (`otp_requests_exhausted`), or the
+            number is locked out after too many wrong codes (`phone_locked_out`).
+            A locked number gets no new code: issuing one would let an attacker
+            clear their own way out of a lockout.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: A code could not be sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/auth/otp/verify:
+    post:
+      tags: [auth]
+      summary: Exchange a code for a session and a token pair
+      security: []
+      parameters:
+        - { name: area,     in: query, schema: { type: string } }
+        - { name: district, in: query, schema: { type: string } }
+        - { name: division, in: query, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code, role]
+              properties:
+                phone: { type: string, example: "01712345678" }
+                code:  { type: string, example: "123456", minLength: 6, maxLength: 6 }
+                role:  { $ref: "#/components/schemas/Role" }
+                device:
+                  type: string
+                  example: "Pixel 8"
+                  description: Shown in the active-devices list so a user can recognise which to revoke.
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400":
+          description: The number, code format or role is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: |
+            The code is wrong or has expired (`invalid_code`). The two are
+            deliberately indistinguishable: telling them apart would tell an
+            attacker whether a code is currently live. `details.attempts_remaining`
+            says how many tries are left.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: Too many wrong codes; the number is locked out
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The code could not be checked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate a refresh token and return a new pair
+      description: |
+        **This is the silent auto-login endpoint.** The app calls it on start
+        and on any `401`; a valid refresh token means the user never sees a
+        login screen.
+
+        A refresh token works exactly once. Presenting one that has already been
+        rotated away means a copy exists, so the entire session is revoked —
+        including the honest client's current token. Which of the two holders is
+        the thief cannot be known, and signing the real user out is recoverable
+        where leaving an attacker signed in is not.
+
+        Concurrent refreshes from one device produce one rotation, not a false
+        theft alarm: the swap is a single atomic step. Clients should still
+        coalesce concurrent refreshes into one in-flight request.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: Rotated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400":
+          description: The body is malformed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: |
+            `invalid_refresh_token` — unknown or expired; wipe stored
+            credentials and show the login screen.
+            `token_reuse_detected` — the token had already been rotated away.
+            The whole session is now revoked; wipe storage and sign in again.
+            `session_expired` — the session outlived its window.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: Too many refreshes for this token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session
+      description: |
+        Idempotent. The refresh token stops working immediately; the access
+        token is stateless and stops working within its lifetime, which is why
+        `auth.access_token_ttl` is capped at an hour.
+      responses:
+        "204":
+          description: Signed out
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The session could not be revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/auth/logout-all:
+    post:
+      tags: [auth]
+      summary: Revoke every session for this user
+      description: |
+        What someone reaches for when they think their account is compromised,
+        so it does not require knowing which device was taken.
+      responses:
+        "204":
+          description: Signed out everywhere
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The sessions could not be revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/auth/sessions:
+    get:
+      tags: [auth]
+      summary: List active devices
+      description: |
+        Carries no token and no hash: the list exists so a user can recognise
+        and revoke a device, which needs a label and a time, not a credential.
+      responses:
+        "200":
+          description: The user's active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/DeviceSession" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The devices could not be listed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -352,6 +603,60 @@ components:
       required: [error]
       properties:
         error: { $ref: "#/components/schemas/Error" }
+
+    Role:
+      type: string
+      enum: [customer, partner, merchant, admin]
+      description: |
+        The four roles. Every endpoint declares which it admits; admin is not a
+        silent superset, so an admin token reaching a partner endpoint is
+        refused rather than quietly allowed (2.7).
+
+    TokenPair:
+      type: object
+      description: |
+        What a client stores after signing in or refreshing. The refresh token
+        goes to secure storage (Keystore / Keychain); the access token stays in
+        memory and is never written to disk.
+      required: [access_token, refresh_token, token_type, expires_in, role, user_id, session_id]
+      properties:
+        access_token:
+          type: string
+          description: |
+            A short-lived JWT. Clients do not decode it: deciding when a token
+            is valid is a business rule, and a client that decides for itself
+            is a client that disagrees with the server (2.9).
+        refresh_token:
+          type: string
+          description: |
+            Opaque and single-use. The server stores only a SHA-256 hash, so a
+            dump of the session store cannot be used to sign in as anyone.
+        token_type: { type: string, enum: [Bearer] }
+        expires_in:
+          type: integer
+          format: int64
+          example: 900
+          description: Seconds until the access token expires, stated by the server.
+        role:       { $ref: "#/components/schemas/Role" }
+        user_id:    { type: string }
+        session_id: { type: string }
+        new_user:
+          type: boolean
+          description: |
+            True only on a first sign-in, so the app knows to collect a name
+            rather than inferring it from an empty profile. Absent on a refresh.
+
+    DeviceSession:
+      type: object
+      required: [session_id, device, created_at, last_seen_at, current]
+      properties:
+        session_id:   { type: string }
+        device:       { type: string, example: "Pixel 8" }
+        created_at:   { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        current:
+          type: boolean
+          description: Marks the session making this request, so the UI can label it.
 
     ConfigScopeLevel:
       type: string

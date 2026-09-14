@@ -42,6 +42,18 @@ const (
 	DispatchMaxConcurrent   = "dispatch.max_concurrent_jobs"
 	OrderCancellationWindow = "order.cancellation_window"
 	OrderCODLimit           = "order.cod_limit"
+
+	AuthOTPRequestsPerHour = "auth.otp_requests_per_hour"
+	AuthOTPVerifyAttempts  = "auth.otp_verify_attempts"
+	AuthOTPLockoutWindow   = "auth.otp_lockout_window"
+	AuthOTPTTL             = "auth.otp_ttl"
+	// These two are flagged by gosec's hardcoded-credential rule because the
+	// identifier contains "token" and the value is a literal. They are the
+	// names of configuration keys, not secrets: the signing key lives in the
+	// environment and never in the database (ADR 0004).
+	AuthAccessTokenTTL  = "auth.access_token_ttl"  //nolint:gosec // a config key name, not a credential
+	AuthRefreshTokenTTL = "auth.refresh_token_ttl" //nolint:gosec // a config key name, not a credential
+	AuthMaxSessions     = "auth.max_sessions_per_user"
 )
 
 // Settings is a resolved configuration snapshot.

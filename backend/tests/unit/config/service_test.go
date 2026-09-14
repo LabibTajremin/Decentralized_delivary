@@ -65,6 +65,10 @@ func TestContractKeysMatchTheRegistry(t *testing.T) {
 		contract.DispatchPartnerRadius, contract.DispatchAssignTimeout,
 		contract.DispatchMaxConcurrent, contract.OrderCancellationWindow,
 		contract.OrderCODLimit,
+		contract.AuthOTPRequestsPerHour, contract.AuthOTPVerifyAttempts,
+		contract.AuthOTPLockoutWindow, contract.AuthOTPTTL,
+		contract.AuthAccessTokenTTL, contract.AuthRefreshTokenTTL,
+		contract.AuthMaxSessions,
 	}
 	if len(exported) != len(domain.AllKeys()) {
 		t.Fatalf("contract exports %d keys, the registry has %d", len(exported), len(domain.AllKeys()))

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/config/domain"
 )
 
 // These drive the config endpoints through the real binary against real
@@ -12,11 +14,23 @@ import (
 
 func putJSON(t *testing.T, url, body string, into any) int {
 	t.Helper()
+	return putJSONAs(t, url, body, adminToken, into)
+}
+
+// adminToken is set by startConfigAPI. The config surface is admin-only, so
+// every call below carries one.
+var adminToken string
+
+func putJSONAs(t *testing.T, url, body, bearer string, into any) int {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBufferString(body)) //nolint:noctx // fixed test-local URL
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("PUT %s: %v", url, err)
@@ -37,6 +51,9 @@ func deleteJSON(t *testing.T, url, body string, into any) int {
 		t.Fatalf("build request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if adminToken != "" {
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("DELETE %s: %v", url, err)
@@ -60,7 +77,7 @@ func effectiveValue(t *testing.T, base, query, key string) (value, source string
 			Source string `json:"source"`
 		} `json:"values"`
 	}
-	if status := getJSON(t, base+"/v1/config/effective?"+query, &body); status != http.StatusOK {
+	if status := getJSONAs(t, base+"/v1/config/effective?"+query, adminToken, &body); status != http.StatusOK {
 		t.Fatalf("effective config status = %d", status)
 	}
 	for _, v := range body.Values {
@@ -75,7 +92,7 @@ func effectiveValue(t *testing.T, base, query, key string) (value, source string
 // TestAnAreaOverrideTakesEffectEndToEnd is the whole point of the module:
 // an admin changes a fee for one area and only that area sees it.
 func TestAnAreaOverrideTakesEffectEndToEnd(t *testing.T) {
-	base, stop := startAPIWithDB(t)
+	base, stop := startConfigAPI(t)
 	defer stop()
 
 	const dhanmondi = "area=DHK-DHM&district=DHK&division=DHA"
@@ -134,7 +151,7 @@ func TestAnAreaOverrideTakesEffectEndToEnd(t *testing.T) {
 // TestResolutionOrderOverHTTP: a district override applies to its areas, and an
 // area override beats it.
 func TestResolutionOrderOverHTTP(t *testing.T) {
-	base, stop := startAPIWithDB(t)
+	base, stop := startConfigAPI(t)
 	defer stop()
 
 	const query = "area=DHK-MIR&district=DHK&division=DHA"
@@ -162,7 +179,7 @@ func TestResolutionOrderOverHTTP(t *testing.T) {
 
 // TestTheDivisionCeilingCannotBeTurnedOffOverHTTP is D3 at the API boundary.
 func TestTheDivisionCeilingCannotBeTurnedOffOverHTTP(t *testing.T) {
-	base, stop := startAPIWithDB(t)
+	base, stop := startConfigAPI(t)
 	defer stop()
 
 	var body struct {
@@ -192,7 +209,7 @@ func TestTheDivisionCeilingCannotBeTurnedOffOverHTTP(t *testing.T) {
 }
 
 func TestOutOfBoundsIsRejectedOverHTTP(t *testing.T) {
-	base, stop := startAPIWithDB(t)
+	base, stop := startConfigAPI(t)
 	defer stop()
 
 	var body struct {
@@ -218,7 +235,7 @@ func TestOutOfBoundsIsRejectedOverHTTP(t *testing.T) {
 }
 
 func TestDefinitionsAreServed(t *testing.T) {
-	base, stop := startAPIWithDB(t)
+	base, stop := startConfigAPI(t)
 	defer stop()
 
 	var body struct {
@@ -227,10 +244,60 @@ func TestDefinitionsAreServed(t *testing.T) {
 			Immutable bool   `json:"immutable"`
 		} `json:"definitions"`
 	}
-	if status := getJSON(t, base+"/v1/config/definitions", &body); status != http.StatusOK {
+	if status := getJSONAs(t, base+"/v1/config/definitions", adminToken, &body); status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
-	if len(body.Definitions) != 17 {
-		t.Errorf("definitions = %d, want the 17 Appendix B variables", len(body.Definitions))
+	// Compared against the registry rather than a literal: a hard-coded count
+	// goes stale the moment a phase adds a variable, and then fails for a
+	// reason that has nothing to do with what the test is checking.
+	if len(body.Definitions) != len(domain.AllKeys()) {
+		t.Errorf("definitions = %d, want every one of the %d registered variables",
+			len(body.Definitions), len(domain.AllKeys()))
+	}
+	if len(body.Definitions) == 0 {
+		t.Error("no definitions were served at all")
+	}
+}
+
+// startConfigAPI starts the server and signs an administrator in, because the
+// whole configuration surface is admin-only.
+func startConfigAPI(t *testing.T) (string, func()) {
+	t.Helper()
+	base, tail, stop := startAuthAPI(t)
+	admin := signInAs(t, base, tail, uniquePhone(t), "admin console", "admin")
+	adminToken = admin.AccessToken
+	return base, func() {
+		adminToken = ""
+		stop()
+	}
+}
+
+// TestTheConfigSurfaceIsAdminOnly. An area's effective configuration states its
+// COD limit, its fee bands and its discovery radius — enough to price around
+// the system — so the reads are protected as well as the writes.
+func TestTheConfigSurfaceIsAdminOnly(t *testing.T) {
+	base, tail, stop := startAuthAPI(t)
+	defer stop()
+
+	customer := signInAs(t, base, tail, uniquePhone(t), "phone", "customer")
+
+	for _, target := range []string{
+		"/v1/config/definitions",
+		"/v1/config/effective?area=DHK-DHM",
+	} {
+		if status := getJSONAs(t, base+target, "", nil); status != http.StatusUnauthorized {
+			t.Errorf("%s with no token: status = %d, want 401", target, status)
+		}
+		if status := getJSONAs(t, base+target, customer.AccessToken, nil); status != http.StatusForbidden {
+			t.Errorf("%s as a customer: status = %d, want 403", target, status)
+		}
+	}
+
+	body := `{"key":"pricing.delivery_base","level":"global","code":"","value":"6000","reason":"r","actor_id":"a"}`
+	if status := putJSONAs(t, base+"/v1/config/overrides", body, "", nil); status != http.StatusUnauthorized {
+		t.Errorf("setting an override with no token: status = %d, want 401", status)
+	}
+	if status := putJSONAs(t, base+"/v1/config/overrides", body, customer.AccessToken, nil); status != http.StatusForbidden {
+		t.Errorf("setting an override as a customer: status = %d, want 403", status)
 	}
 }

@@ -41,3 +41,27 @@ Option 3.
   deliberate bound on that window.
 - Losing Redis logs everyone out at their next refresh but does not invalidate
   in-flight access tokens — degradation, not an outage.
+
+
+## Addendum — as built (P04)
+
+The model above survived implementation with three refinements worth recording.
+
+**A spent-token index, not a family scan.** Telling "already rotated" from
+"never issued" was originally to be answered by looking in the session's family
+set. That needs the session id, which is precisely what an unknown token does
+not give you — so answering it would have meant scanning every family, O(n) in
+sessions. A `refresh_spent:<hash>` key answers it in O(1), and is deleted along
+with the family when a session is revoked so an ordinary logout is never
+reported as a theft.
+
+**The attempt counter is one script, not INCR then EXPIRE.** As two commands, a
+process dying between them leaves a lockout counter with no expiry — a permanent
+lockout of that phone number that only a manual Redis edit could clear. This was
+found while chasing an untested branch, which is the argument for the coverage
+gate in one sentence.
+
+**Session ordering breaks ties on the id.** "Evict the oldest session" is
+undefined when two sign-ins share an instant, and would have removed an
+arbitrary device. Session ids are time-ordered, so they are a meaningful
+tie-break rather than an arbitrary one.

@@ -28,6 +28,19 @@ Resolution order: **area → district → division → global default**.
 | `dispatch.max_concurrent_jobs` | 3 | count | no | Batching limit |
 | `order.cancellation_window` | 120 | sec | no | Free cancellation period |
 | `order.cod_limit` | 5000 | BDT | yes | Maximum COD order value |
+| `auth.otp_requests_per_hour` | 5 | count | no | OTP requests per phone number per hour |
+| `auth.otp_verify_attempts` | 5 | count | no | Wrong codes before lockout |
+| `auth.otp_lockout_window` | 900 | sec | no | Lockout duration after too many wrong codes |
+| `auth.otp_ttl` | 300 | sec | no | OTP validity |
+| `auth.access_token_ttl` | 900 | sec | no | Access token lifetime |
+| `auth.refresh_token_ttl` | 5184000 | sec | no | Refresh token lifetime (60 days) |
+| `auth.max_sessions_per_user` | 5 | count | no | Active devices; oldest evicted beyond this |
+
+> The `auth.*` keys were added in P04. They are business rules rather than
+> deployment settings: an operator seeing OTP abuse in one division must be able
+> to tighten the limit there, without a redeploy and without tightening it
+> everywhere. None is auto-tunable — a tuner that can lengthen a token lifetime
+> or loosen a brute-force limit is a tuner that can weaken authentication.
 
 **Auto-tuner (`ALG-09`)** runs per area on a schedule. It adjusts only variables marked auto-tuned, only within admin-configured min/max bounds, and writes every change to the config audit log with its reasoning. The admin can pin any variable, disabling auto-tuning for it in that area.
 

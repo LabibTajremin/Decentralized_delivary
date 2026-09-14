@@ -37,6 +37,23 @@ var appendixB = []struct {
 	{domain.DispatchMaxConcurrent, domain.KindCount, "3", false, false},
 	{domain.OrderCancellationWindow, domain.KindDuration, "120", false, false},
 	{domain.OrderCODLimit, domain.KindMoney, "500000", true, false},
+	{domain.AuthOTPRequestsPerHour, domain.KindCount, "5", false, false},
+	{domain.AuthOTPVerifyAttempts, domain.KindCount, "5", false, false},
+	{domain.AuthOTPLockoutWindow, domain.KindDuration, "900", false, false},
+	{domain.AuthOTPTTL, domain.KindDuration, "300", false, false},
+	{domain.AuthAccessTokenTTL, domain.KindDuration, "900", false, false},
+	{domain.AuthRefreshTokenTTL, domain.KindDuration, "5184000", false, false},
+	{domain.AuthMaxSessions, domain.KindCount, "5", false, false},
+}
+
+// TestNoAuthLimitIsAutoTunable: a tuner that can lengthen a token lifetime or
+// loosen a brute-force limit is a tuner that can weaken authentication.
+func TestNoAuthLimitIsAutoTunable(t *testing.T) {
+	for _, def := range domain.AllDefinitions() {
+		if len(def.Key) >= 5 && def.Key[:5] == "auth." && def.AutoTunable {
+			t.Errorf("%s is auto-tunable; authentication limits must not be", def.Key)
+		}
+	}
 }
 
 func TestRegistryMatchesAppendixB(t *testing.T) {

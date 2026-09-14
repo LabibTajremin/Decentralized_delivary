@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-
-	"github.com/rootlogic-lab/delivery/backend/tests/dbtest"
 )
 
 // These exercise the geo endpoints through the real binary against a real
@@ -19,14 +17,27 @@ func startAPIWithDB(t *testing.T) (string, func()) {
 	t.Helper()
 	// Its own schema, for the same reason the integration suite has one: these
 	// binaries run concurrently and both reshape the database.
-	url := dbtest.MustSchemaURL("e2e")
+	url := dbtestSchemaURL(t)
 	seedDemoData(t, url)
 	return startAPI(t, buildAPI(t), "DATABASE_URL="+url)
 }
 
 func getJSON(t *testing.T, url string, into any) int {
 	t.Helper()
-	resp, err := http.Get(url) //nolint:gosec,noctx // fixed test-local URL
+	return getJSONAs(t, url, "", into)
+}
+
+// getJSONAs is getJSON with a bearer token, for endpoints behind a role.
+func getJSONAs(t *testing.T, url, bearer string, into any) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // fixed test-local URL
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}

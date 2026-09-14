@@ -79,14 +79,61 @@ type fixedIDs struct{}
 
 func (fixedIDs) New(prefix string) string { return prefix + "_fixed" }
 
+// openGuard admits everything, so these tests exercise the handlers rather
+// than the guard. That the guard is really applied is asserted separately by
+// TestEveryConfigRouteIsBehindTheGuard and, end to end, by the E2E suite.
+func openGuard(next http.Handler) http.Handler { return next }
+
 func newMux(repo *memoryRepo) *http.ServeMux {
+	return newMuxWithGuard(repo, openGuard)
+}
+
+func newMuxWithGuard(repo *memoryRepo, guard confighttp.Guard) *http.ServeMux {
 	mux := http.NewServeMux()
 	confighttp.NewHandler(
 		application.NewResolveUseCase(repo),
 		application.NewSetOverrideUseCase(repo, fixedClock{}, fixedIDs{}),
 		application.NewClearOverrideUseCase(repo, fixedClock{}, fixedIDs{}),
+		guard,
 	).Register(mux)
 	return mux
+}
+
+// TestEveryConfigRouteIsBehindTheGuard: the whole configuration surface is
+// admin-only, reads included, and a route that slipped past the guard would
+// publish an area's fee bands and COD limit to anyone.
+func TestEveryConfigRouteIsBehindTheGuard(t *testing.T) {
+	var guarded []string
+	counting := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			guarded = append(guarded, r.Method+" "+r.URL.Path)
+			next.ServeHTTP(w, r)
+		})
+	}
+	mux := newMuxWithGuard(&memoryRepo{}, counting)
+
+	for _, pattern := range confighttp.Patterns() {
+		method, path, found := strings.Cut(pattern, " ")
+		if !found {
+			t.Fatalf("pattern %q is not %q", pattern, "METHOD /path")
+		}
+		guarded = nil
+		do(mux, method, path, "{}")
+		if len(guarded) == 0 {
+			t.Errorf("%s reached its handler without passing the guard", pattern)
+		}
+	}
+}
+
+// A nil guard would silently publish the whole configuration surface, so it is
+// refused at wiring time rather than becoming a hole nobody notices.
+func TestANilGuardIsRefusedAtWiringTime(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("a handler was built with no guard")
+		}
+	}()
+	confighttp.NewHandler(nil, nil, nil, nil)
 }
 
 func do(mux *http.ServeMux, method, target, body string) *httptest.ResponseRecorder {

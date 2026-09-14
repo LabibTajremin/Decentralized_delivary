@@ -1,8 +1,9 @@
 // Package http exposes the config module over HTTP.
 //
-// These are admin endpoints. Authentication and role checks arrive in P04; until
-// then the routes exist and are documented, and the P04 middleware wraps them
-// without any change here — which is the point of keeping transport thin.
+// These are admin endpoints, and every one of them is behind the admin role.
+// The read endpoints are protected too, not only the writes: the effective
+// configuration for an area states its COD limit, its fee bands and its
+// discovery radius, which together describe how to price around the system.
 package http
 
 import (
@@ -16,16 +17,36 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
 
+// Guard wraps a handler in a role requirement.
+//
+// It is the identity module's Require, passed in rather than imported: config
+// must not depend on identity's transport package, and a function value is the
+// smallest seam that keeps the dependency pointing the right way.
+type Guard func(http.Handler) http.Handler
+
 // Handler serves the config endpoints.
 type Handler struct {
-	resolve *application.ResolveUseCase
-	set     *application.SetOverrideUseCase
-	reset   *application.ClearOverrideUseCase
+	resolve   *application.ResolveUseCase
+	set       *application.SetOverrideUseCase
+	reset     *application.ClearOverrideUseCase
+	adminOnly Guard
 }
 
 // NewHandler builds the handler.
-func NewHandler(resolve *application.ResolveUseCase, set *application.SetOverrideUseCase, reset *application.ClearOverrideUseCase) *Handler {
-	return &Handler{resolve: resolve, set: set, reset: reset}
+//
+// adminOnly must not be nil. A nil guard would silently publish the whole
+// configuration surface, so it is refused at wiring time rather than becoming a
+// hole nobody notices.
+func NewHandler(
+	resolve *application.ResolveUseCase,
+	set *application.SetOverrideUseCase,
+	reset *application.ClearOverrideUseCase,
+	adminOnly Guard,
+) *Handler {
+	if adminOnly == nil {
+		panic("config transport: an admin guard is required")
+	}
+	return &Handler{resolve: resolve, set: set, reset: reset, adminOnly: adminOnly}
 }
 
 // routes maps mux patterns to handlers. Register mounts them and Patterns
@@ -39,10 +60,10 @@ func (h *Handler) routes() map[string]http.HandlerFunc {
 	}
 }
 
-// Register mounts the config routes.
+// Register mounts the config routes, every one behind the admin guard.
 func (h *Handler) Register(mux *http.ServeMux) {
 	for pattern, handle := range h.routes() {
-		mux.HandleFunc(pattern, handle)
+		mux.Handle(pattern, h.adminOnly(handle))
 	}
 }
 
