@@ -32,6 +32,9 @@ import (
 	identitysms "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/infrastructure/sms"
 	identitytoken "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/infrastructure/token"
 	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
+	merchantapp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/application"
+	merchantpg "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/infrastructure/persistence/postgres"
+	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
 	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
 	userpg "github.com/rootlogic-lab/delivery/backend/internal/modules/user/infrastructure/persistence/postgres"
 	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
@@ -126,6 +129,7 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	geoService := geoapp.NewService(
 		geoapp.NewResolveAreaUseCase(geoRepo),
 		geoapp.NewMerchantsWithinRadiusUseCase(geoRepo),
+		geoapp.NewPlaceMerchantUseCase(geoRepo),
 	)
 	geohttp.NewHandler(geoService).Register(mux)
 
@@ -182,6 +186,24 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		userapp.NewProfileUseCase(userRepo),
 		userapp.NewAddressUseCase(userRepo, geoService, ids),
 		userhttp.Guard(authenticator.Authenticated()),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+	).Register(mux)
+
+	// Merchant (P06). Registration is open to any signed-in account — D1 says a
+	// shop may register from anywhere in Bangladesh, and the merchant role is
+	// something an approved owner gets, not a prerequisite for applying. The
+	// approval queue sits behind the admin role.
+	merchantRepo := merchantpg.NewFromPool(pool)
+	merchanthttp.NewHandler(
+		merchantapp.NewRegistrationUseCase(merchantRepo, geoService, systemClock, ids),
+		merchantapp.NewOperationsUseCase(merchantRepo, systemClock),
+		merchantapp.NewModerationUseCase(merchantRepo, geoService, systemClock, ids),
+		systemClock,
+		merchanthttp.Guard(authenticator.Authenticated()),
+		merchanthttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
 		func(r *http.Request) (string, bool) {
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
 			return principal.UserID, ok

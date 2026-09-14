@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/geo/domain"
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 )
@@ -359,5 +360,155 @@ func TestRadiusSearchUsesTheSpatialIndex(t *testing.T) {
 			t.Fatal("EXPLAIN returned no plan")
 		}
 		t.Logf("plan:\n%s", plan)
+	})
+}
+
+// ------------------------------------------------- publishing a merchant
+
+// remoteSpot is inside the Dhaka division but far from every seeded merchant,
+// so a count around it measures only what the test itself published.
+func remoteSpot() domain.Coordinate { return domain.MustCoordinate(24.5, 90.0) }
+
+// TestAMerchantLocationRoundTripsAndBecomesSearchable proves the write half of
+// ALG-01: the merchant module publishes a point here, and the radius search
+// reads it back through the same index.
+func TestAMerchantLocationRoundTripsAndBecomesSearchable(t *testing.T) {
+	withSchema(t, func(ctx context.Context, tx pgx.Tx) {
+		repo := geopg.New(tx)
+		centre := remoteSpot()
+
+		if err := repo.UpsertMerchantLocation(ctx, ports.MerchantPoint{
+			MerchantID: "MER-NEW",
+			Location:   centre,
+			Division:   domain.DivisionDhaka,
+			AreaCode:   "DHN",
+			Active:     true,
+		}); err != nil {
+			t.Fatalf("UpsertMerchantLocation: %v", err)
+		}
+
+		found, err := repo.MerchantsWithinRadius(ctx, centre, domain.Distance(2000), domain.DivisionDhaka, 10)
+		if err != nil {
+			t.Fatalf("MerchantsWithinRadius: %v", err)
+		}
+		if len(found) != 1 || found[0].MerchantID != "MER-NEW" {
+			t.Fatalf("found = %+v, want only the published shop", found)
+		}
+		if diff := found[0].Location.Lat() - centre.Lat(); math.Abs(diff) > 1e-9 {
+			t.Errorf("lat = %v, want %v", found[0].Location.Lat(), centre.Lat())
+		}
+
+		var areaCode *string
+		if err := tx.QueryRow(ctx,
+			`SELECT area_code FROM geo_merchant_locations WHERE merchant_id = $1`,
+			"MER-NEW").Scan(&areaCode); err != nil {
+			t.Fatalf("read area_code: %v", err)
+		}
+		if areaCode == nil || *areaCode != "DHN" {
+			t.Errorf("area_code = %v, want DHN", areaCode)
+		}
+	})
+}
+
+// TestDeactivatingAMerchantHidesItWithoutLosingItsPoint: suspension sets the
+// flag rather than deleting the row, so a reinstatement is a flag change and
+// not a re-registration.
+func TestDeactivatingAMerchantHidesItWithoutLosingItsPoint(t *testing.T) {
+	withSchema(t, func(ctx context.Context, tx pgx.Tx) {
+		repo := geopg.New(tx)
+		centre := remoteSpot()
+		point := ports.MerchantPoint{
+			MerchantID: "MER-NEW", Location: centre,
+			Division: domain.DivisionDhaka, Active: true,
+		}
+
+		count := func() int {
+			t.Helper()
+			n, err := repo.CountMerchantsWithinRadius(ctx, centre, domain.Distance(2000), domain.DivisionDhaka)
+			if err != nil {
+				t.Fatalf("CountMerchantsWithinRadius: %v", err)
+			}
+			return n
+		}
+
+		if err := repo.UpsertMerchantLocation(ctx, point); err != nil {
+			t.Fatalf("first upsert: %v", err)
+		}
+		if count() != 1 {
+			t.Fatalf("count = %d after publishing, want 1", count())
+		}
+
+		point.Active = false
+		if err := repo.UpsertMerchantLocation(ctx, point); err != nil {
+			t.Fatalf("deactivating upsert: %v", err)
+		}
+		if count() != 0 {
+			t.Errorf("count = %d, want the deactivated shop hidden", count())
+		}
+
+		// The row survives, so reactivating is one more upsert.
+		point.Active = true
+		if err := repo.UpsertMerchantLocation(ctx, point); err != nil {
+			t.Fatalf("reactivating upsert: %v", err)
+		}
+		if count() != 1 {
+			t.Errorf("count = %d, want the shop back", count())
+		}
+	})
+}
+
+// TestAMerchantOutsideEveryMappedAreaStillGetsARow: area_code is a foreign key,
+// so an empty code must be written as NULL rather than ”. Refusing the shop
+// for falling outside a drawn area would make whether a merchant may join
+// depend on how finely we have mapped their upazila (D1).
+func TestAMerchantOutsideEveryMappedAreaStillGetsARow(t *testing.T) {
+	withSchema(t, func(ctx context.Context, tx pgx.Tx) {
+		if err := geopg.New(tx).UpsertMerchantLocation(ctx, ports.MerchantPoint{
+			MerchantID: "MER-NEW", Location: remoteSpot(),
+			Division: domain.DivisionDhaka, AreaCode: "", Active: true,
+		}); err != nil {
+			t.Fatalf("UpsertMerchantLocation: %v", err)
+		}
+
+		var areaCode *string
+		if err := tx.QueryRow(ctx,
+			`SELECT area_code FROM geo_merchant_locations WHERE merchant_id = $1`,
+			"MER-NEW").Scan(&areaCode); err != nil {
+			t.Fatalf("read area_code: %v", err)
+		}
+		if areaCode != nil {
+			t.Errorf("area_code = %q, want NULL", *areaCode)
+		}
+	})
+}
+
+func TestRemovingAMerchantTakesItOutOfTheIndex(t *testing.T) {
+	withSchema(t, func(ctx context.Context, tx pgx.Tx) {
+		repo := geopg.New(tx)
+		centre := remoteSpot()
+
+		if err := repo.UpsertMerchantLocation(ctx, ports.MerchantPoint{
+			MerchantID: "MER-NEW", Location: centre,
+			Division: domain.DivisionDhaka, Active: true,
+		}); err != nil {
+			t.Fatalf("UpsertMerchantLocation: %v", err)
+		}
+		if err := repo.DeleteMerchantLocation(ctx, "MER-NEW"); err != nil {
+			t.Fatalf("DeleteMerchantLocation: %v", err)
+		}
+
+		n, err := repo.CountMerchantsWithinRadius(ctx, centre, domain.Distance(2000), domain.DivisionDhaka)
+		if err != nil {
+			t.Fatalf("CountMerchantsWithinRadius: %v", err)
+		}
+		if n != 0 {
+			t.Errorf("count = %d, want the shop gone", n)
+		}
+
+		// Removing it again is not an error: a withdrawal retried after a
+		// timeout must not fail the second time.
+		if err := repo.DeleteMerchantLocation(ctx, "MER-NEW"); err != nil {
+			t.Errorf("second delete: %v", err)
+		}
 	})
 }

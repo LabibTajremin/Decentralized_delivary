@@ -14,11 +14,12 @@ import (
 type Service struct {
 	resolveArea *ResolveAreaUseCase
 	merchants   *MerchantsWithinRadiusUseCase
+	place       *PlaceMerchantUseCase
 }
 
 // NewService wires the public service.
-func NewService(resolveArea *ResolveAreaUseCase, merchants *MerchantsWithinRadiusUseCase) *Service {
-	return &Service{resolveArea: resolveArea, merchants: merchants}
+func NewService(resolveArea *ResolveAreaUseCase, merchants *MerchantsWithinRadiusUseCase, place *PlaceMerchantUseCase) *Service {
+	return &Service{resolveArea: resolveArea, merchants: merchants, place: place}
 }
 
 // toCoordinate validates an inbound point once, at the boundary.
@@ -38,6 +39,25 @@ func (s *Service) ResolveArea(ctx context.Context, p contract.Point) (contract.A
 		return contract.Area{}, err
 	}
 	resolved, err := s.resolveArea.Execute(ctx, c)
+	if err != nil {
+		return contract.Area{}, err
+	}
+	return contract.Area{
+		AreaCode:     resolved.Area.Code,
+		AreaName:     resolved.Area.Name,
+		DistrictCode: resolved.Area.District,
+		DivisionCode: resolved.Division.Code.String(),
+		DivisionName: resolved.Division.Name,
+	}, nil
+}
+
+// ResolveDivision places a point when only the division is required.
+func (s *Service) ResolveDivision(ctx context.Context, p contract.Point) (contract.Area, error) {
+	c, err := toCoordinate(p)
+	if err != nil {
+		return contract.Area{}, err
+	}
+	resolved, err := s.resolveArea.Division(ctx, c)
 	if err != nil {
 		return contract.Area{}, err
 	}
@@ -96,4 +116,18 @@ func (s *Service) DistanceBetween(_ context.Context, a, b contract.Point) (float
 		return 0, err
 	}
 	return ca.DistanceTo(cb).Metres(), nil
+}
+
+// PlaceMerchant records a merchant's location and whether it is searchable.
+func (s *Service) PlaceMerchant(ctx context.Context, m contract.MerchantPlacement) error {
+	c, err := toCoordinate(contract.Point{Lat: m.Lat, Lng: m.Lng})
+	if err != nil {
+		return err
+	}
+	return s.place.Execute(ctx, m.MerchantID, c, m.Active)
+}
+
+// RemoveMerchant drops a merchant from the spatial index.
+func (s *Service) RemoveMerchant(ctx context.Context, merchantID string) error {
+	return s.place.Remove(ctx, merchantID)
 }

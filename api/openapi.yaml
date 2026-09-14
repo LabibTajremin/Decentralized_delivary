@@ -774,6 +774,520 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/merchants:
+    post:
+      tags: [merchants]
+      summary: Register a shop
+      description: |
+        D1: a shop may register from anywhere in Bangladesh. The only
+        geographic requirement is that the pin falls inside a division we have
+        mapped. The shop starts in `draft` and is invisible to customers until
+        an admin approves it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDetailsInput" }
+      responses:
+        "201":
+          description: The newly registered shop, in draft
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: Details or pin not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: The pin is outside the area we serve
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: This account already has a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/registration-requirements:
+    get:
+      tags: [merchants]
+      summary: Which documents each kind of shop must supply
+      description: |
+        Served rather than hard-coded in the app, so the rule lives in one
+        place. A pharmacy needs a drug licence; a grocery does not.
+      responses:
+        "200":
+          description: The required documents, per shop type
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegistrationRequirements" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/me:
+    get:
+      tags: [merchants]
+      summary: The shop this account owns
+      responses:
+        "200":
+          description: The shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      tags: [merchants]
+      summary: Change the shop's details
+      description: |
+        Refused while the shop is under review, so an admin decides on the
+        details they were shown.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDetailsInput" }
+      responses:
+        "200":
+          description: The updated shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: Details or pin not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The shop is under review
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [merchants]
+      summary: Withdraw a registration that was never approved
+      responses:
+        "204":
+          description: Withdrawn
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: An approved shop cannot be withdrawn here
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/me/documents:
+    put:
+      tags: [merchants]
+      summary: Attach or replace a document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDocumentInput" }
+      responses:
+        "200":
+          description: The shop, with the document attached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: The document is not valid, or is not required for this kind of shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The shop is under review
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/me/submit:
+    post:
+      tags: [merchants]
+      summary: Submit the shop for review
+      responses:
+        "200":
+          description: The shop, now pending review
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Documents are still missing, or the shop cannot be submitted from its current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/me/hours:
+    put:
+      tags: [merchants]
+      summary: Replace the opening hours
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantHoursInput" }
+      responses:
+        "200":
+          description: The shop, with its new opening hours
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: The opening times overlap, are unreadable, or never open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/me/holiday:
+    put:
+      tags: [merchants]
+      summary: Close the shop temporarily
+      description: |
+        Holiday mode hides the shop from listings until it reopens. A holiday
+        with an end date expires on its own; one without stays until the owner
+        ends it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantHolidayInput" }
+      responses:
+        "200":
+          description: The shop, now on holiday
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: The reopening date is in the past or too far away
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [merchants]
+      summary: Reopen after a holiday
+      responses:
+        "200":
+          description: The shop, open again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: This account has not registered a shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants:
+    get:
+      tags: [admin]
+      summary: List shops, for the approval queue
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/MerchantStatus" } }
+        - { name: type, in: query, required: false, schema: { $ref: "#/components/schemas/MerchantType" } }
+        - { name: division, in: query, required: false, schema: { type: string, example: BD-C } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Matching shops, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [merchants]
+                properties:
+                  merchants:
+                    type: array
+                    items: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: Unknown status or shop type
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants/{id}:
+    get:
+      tags: [admin]
+      summary: One shop, documents included
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants/{id}/history:
+    get:
+      tags: [admin]
+      summary: Every decision taken on a shop, newest first
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        "200":
+          description: The decision history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/MerchantStatusEvent" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The history could not be read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants/{id}/approve:
+    post:
+      tags: [admin]
+      summary: Approve a shop, making it visible to customers
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDecisionInput" }
+      responses:
+        "200":
+          description: The shop, now approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The shop cannot be approved from its current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants/{id}/reject:
+    post:
+      tags: [admin]
+      summary: Refuse a shop, with a reason its owner will read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDecisionInput" }
+      responses:
+        "200":
+          description: The shop, now rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: No reason was given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The shop cannot be rejected from its current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants/{id}/suspend:
+    post:
+      tags: [admin]
+      summary: Pull an approved shop out of the listings
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDecisionInput" }
+      responses:
+        "200":
+          description: The shop, now suspended
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: No reason was given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The shop cannot be suspended from its current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/merchants/{id}/reinstate:
+    post:
+      tags: [admin]
+      summary: Put a suspended shop back in the listings
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantDecisionInput" }
+      responses:
+        "200":
+          description: The shop, approved again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The shop cannot be reinstated from its current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -783,6 +1297,170 @@ components:
       description: Short-lived access token. See docs/build/phases/P04.md.
 
   schemas:
+    MerchantType:
+      type: string
+      enum: [restaurant, grocery, pharmacy]
+
+    MerchantStatus:
+      type: string
+      description: |
+        Where a shop sits in the approval workflow. Only `approved` is visible
+        to customers, and only then when it is not on holiday.
+      enum: [draft, pending_review, approved, rejected, suspended]
+
+    MerchantDocumentKind:
+      type: string
+      enum: [trade_licence, national_id, food_licence, drug_licence]
+
+    MerchantDetailsInput:
+      type: object
+      required: [name, type, phone, line1, lat, lng]
+      properties:
+        name:     { type: string, example: "নূরজাহান হোটেল" }
+        type:     { $ref: "#/components/schemas/MerchantType" }
+        phone:    { type: string, example: "01712345678" }
+        email:    { type: string, example: "shop@example.com" }
+        logo_url: { type: string, example: "/static/demo/merchant-logo-01.png" }
+        line1:    { type: string, example: "১২/এ, মিরপুর রোড" }
+        line2:    { type: string }
+        lat:      { type: number, format: double, example: 23.7509 }
+        lng:      { type: number, format: double, example: 90.3925 }
+
+    MerchantDocumentInput:
+      type: object
+      required: [kind, number, file_url]
+      properties:
+        kind:     { $ref: "#/components/schemas/MerchantDocumentKind" }
+        number:   { type: string, example: "TRAD/DNCC/012345" }
+        file_url: { type: string, example: "/static/demo/document-01.png" }
+
+    MerchantHoursInput:
+      type: object
+      required: [days]
+      description: |
+        Opening hours keyed by weekday number, Sunday as `"0"`, each window
+        written `HH:MM-HH:MM` in Bangladesh local time. A day left out is
+        closed. Windows may not overlap and may not wrap past midnight: a shop
+        trading until 2am enters `22:00-24:00` and `00:00-02:00` on the next
+        day.
+      properties:
+        days:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string, example: "09:00-22:00" }
+
+    MerchantHolidayInput:
+      type: object
+      properties:
+        until:
+          type: string
+          format: date-time
+          description: When the shop reopens. Omit for indefinitely.
+        reason: { type: string, example: "ঈদের ছুটি" }
+
+    MerchantDecisionInput:
+      type: object
+      description: |
+        The note an admin attaches to a decision. Required for a rejection or a
+        suspension, because the owner reads it; optional for an approval.
+      properties:
+        note: { type: string }
+
+    MerchantDocument:
+      type: object
+      required: [kind, number, file_url, uploaded_at]
+      properties:
+        kind:        { $ref: "#/components/schemas/MerchantDocumentKind" }
+        number:      { type: string }
+        file_url:    { type: string }
+        uploaded_at: { type: string, format: date-time }
+
+    MerchantStatusEvent:
+      type: object
+      required: [id, from, to, actor_user_id, at]
+      properties:
+        id:            { type: string }
+        from:          { $ref: "#/components/schemas/MerchantStatus" }
+        to:            { $ref: "#/components/schemas/MerchantStatus" }
+        actor_user_id: { type: string }
+        note:          { type: string }
+        at:            { type: string, format: date-time }
+
+    RegistrationRequirements:
+      type: object
+      required: [types]
+      properties:
+        types:
+          type: array
+          items:
+            type: object
+            required: [type, required_documents]
+            properties:
+              type: { $ref: "#/components/schemas/MerchantType" }
+              required_documents:
+                type: array
+                items: { $ref: "#/components/schemas/MerchantDocumentKind" }
+
+    Merchant:
+      type: object
+      description: |
+        A shop, as its owner and an admin see it. `open_status` is composed by
+        the server and rendered verbatim by the client (2.9); the client never
+        decides for itself whether a shop is open from the hours.
+      required:
+        [id, owner_user_id, name, type, status, phone, line1, single_line,
+         lat, lng, area_code, area_name, district_code, division_code,
+         is_listed, is_open_now, open_status, hours, documents,
+         required_documents, missing_documents, can_submit, next_statuses,
+         created_at]
+      properties:
+        id:            { type: string, example: mch_01J8ZQ8F3K7YQ2N4V5W6X7Y8Z9 }
+        owner_user_id: { type: string }
+        name:          { type: string }
+        type:          { $ref: "#/components/schemas/MerchantType" }
+        status:        { $ref: "#/components/schemas/MerchantStatus" }
+        phone:         { type: string, example: "+8801712345678" }
+        email:         { type: string }
+        logo_url:      { type: string }
+        line1:         { type: string }
+        line2:         { type: string }
+        single_line:   { type: string, description: The whole address as one line, composed by the server }
+        lat:           { type: number, format: double }
+        lng:           { type: number, format: double }
+        area_code:     { type: string }
+        area_name:     { type: string }
+        district_code: { type: string }
+        division_code: { type: string, description: The D3 ceiling — a customer outside this division can never see the shop }
+        is_listed:     { type: boolean, description: Approved and not on holiday }
+        is_open_now:   { type: boolean, description: Listed and inside an opening window }
+        open_status:   { type: string, example: "খোলা আছে — বন্ধ হবে 22:00" }
+        hours:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string, example: "09:00-22:00" }
+        holiday:
+          type: object
+          properties:
+            until:  { type: string, format: date-time }
+            reason: { type: string }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/MerchantDocument" }
+        required_documents:
+          type: array
+          items: { $ref: "#/components/schemas/MerchantDocumentKind" }
+        missing_documents:
+          type: array
+          items: { $ref: "#/components/schemas/MerchantDocumentKind" }
+        can_submit:    { type: boolean, description: Whether the owner may submit for review right now }
+        next_statuses:
+          type: array
+          items: { $ref: "#/components/schemas/MerchantStatus" }
+        review_note:   { type: string, description: Why the shop was rejected or suspended }
+        created_at:    { type: string, format: date-time }
+
     Money:
       type: object
       description: |

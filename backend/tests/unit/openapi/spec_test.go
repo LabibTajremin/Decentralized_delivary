@@ -22,6 +22,7 @@ import (
 	confighttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
 	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
+	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
 	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
 )
 
@@ -73,6 +74,7 @@ func servedRoutes() []string {
 	routes = append(routes, confighttp.Patterns()...)
 	routes = append(routes, identityhttp.Patterns()...)
 	routes = append(routes, userhttp.Patterns()...)
+	routes = append(routes, merchanthttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }

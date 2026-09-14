@@ -20,6 +20,7 @@ func newService(t *testing.T) (*application.Service, *fakeRepo) {
 	return application.NewService(
 		application.NewResolveAreaUseCase(repo),
 		application.NewMerchantsWithinRadiusUseCase(repo),
+		application.NewPlaceMerchantUseCase(repo),
 	), repo
 }
 
@@ -139,5 +140,63 @@ func TestServiceDistanceBetweenIsTheOneSourceOfTruth(t *testing.T) {
 	}
 	if math.Abs(got/1000-214) > 4 {
 		t.Errorf("distance = %.1f km, want ~214 km", got/1000)
+	}
+}
+
+// TestServicePlacesAndRemovesMerchants: the contract is what the merchant
+// module reaches through, so the conversion at this boundary is part of the
+// D3 guarantee rather than an implementation detail.
+func TestServicePlacesAndRemovesMerchants(t *testing.T) {
+	svc, repo := newService(t)
+
+	if err := svc.PlaceMerchant(context.Background(), contract.MerchantPlacement{
+		MerchantID: "mch_1", Lat: 23.81, Lng: 90.41, Active: true,
+	}); err != nil {
+		t.Fatalf("PlaceMerchant: %v", err)
+	}
+	if len(repo.placed) != 1 || repo.placed[0].MerchantID != "mch_1" {
+		t.Errorf("placed = %+v", repo.placed)
+	}
+
+	if err := svc.RemoveMerchant(context.Background(), "mch_1"); err != nil {
+		t.Fatalf("RemoveMerchant: %v", err)
+	}
+	if len(repo.removed) != 1 {
+		t.Errorf("removed = %v", repo.removed)
+	}
+}
+
+// TestServiceValidatesAMerchantPinAtTheBoundary: an inbound coordinate is
+// checked once, where it crosses into geo, rather than by every caller.
+func TestServiceValidatesAMerchantPinAtTheBoundary(t *testing.T) {
+	svc, repo := newService(t)
+
+	err := svc.PlaceMerchant(context.Background(), contract.MerchantPlacement{
+		MerchantID: "mch_1", Lat: 99, Lng: 90.41, Active: true,
+	})
+	if got := errs.CodeOf(err); got != "invalid_coordinate" {
+		t.Errorf("code = %q, want invalid_coordinate", got)
+	}
+	if len(repo.placed) != 0 {
+		t.Error("an impossible coordinate reached the write")
+	}
+}
+
+func TestServiceResolvesADivisionAtTheBoundary(t *testing.T) {
+	svc, _ := newService(t)
+
+	got, err := svc.ResolveDivision(context.Background(), contract.Point{Lat: 23.81, Lng: 90.41})
+	if err != nil {
+		t.Fatalf("ResolveDivision: %v", err)
+	}
+	if got.DivisionCode != "DHA" || got.DivisionName == "" {
+		t.Errorf("area = %+v, want the Dhaka division named", got)
+	}
+	if got.AreaCode != "DHN" {
+		t.Errorf("area code = %q, want DHN", got.AreaCode)
+	}
+
+	if _, err := svc.ResolveDivision(context.Background(), contract.Point{Lat: 99, Lng: 90.41}); errs.CodeOf(err) != "invalid_coordinate" {
+		t.Errorf("code = %q, want invalid_coordinate", errs.CodeOf(err))
 	}
 }

@@ -50,3 +50,10 @@ Every module exposes exactly one public contract interface. This is the only sur
 > module never reaches into another's storage. See docs/technical/user.md.
 
 ---
+
+> **P06 note.** `GeoContract` gained `PlaceMerchant`, `RemoveMerchant` and
+> `ResolveDivision`. The first two exist so the merchant module can publish a
+> shop's location without writing to geo's tables. The third exists because D1
+> and delivery need different strictness: an address must resolve to a mapped
+> area, while a merchant may register from anywhere in Bangladesh — including an
+> upazila we have not drawn an area for. See docs/technical/merchant.md.

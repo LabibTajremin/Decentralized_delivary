@@ -23,6 +23,13 @@ type fakeRepo struct {
 	areaErr     error
 	searchErr   error
 	countErr    error
+	upsertErr   error
+	deleteErr   error
+
+	// placed and removed record the writes, so a test can prove geo derived
+	// the division itself rather than trusting the caller.
+	placed  []ports.MerchantPoint
+	removed []string
 
 	// lastDivision records what the use case passed down, so a test can prove
 	// the D3 ceiling reached the query rather than being applied afterwards.
@@ -63,4 +70,20 @@ func (f *fakeRepo) CountMerchantsWithinRadius(_ context.Context, _ domain.Coordi
 		return 0, f.countErr
 	}
 	return f.count, nil
+}
+
+func (f *fakeRepo) UpsertMerchantLocation(_ context.Context, m ports.MerchantPoint) error {
+	if f.upsertErr != nil {
+		return f.upsertErr
+	}
+	f.placed = append(f.placed, m)
+	return nil
+}
+
+func (f *fakeRepo) DeleteMerchantLocation(_ context.Context, merchantID string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.removed = append(f.removed, merchantID)
+	return nil
 }

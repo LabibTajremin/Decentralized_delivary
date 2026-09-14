@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application/ports"
@@ -24,6 +25,7 @@ import (
 type Querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // Repository reads geometry from PostGIS.
@@ -248,4 +250,40 @@ func (r *Repository) CountMerchantsWithinRadius(
 		return 0, fmt.Errorf("count merchants within radius: %w", err)
 	}
 	return n, nil
+}
+
+// UpsertMerchantLocation records a merchant's point and searchable flag.
+//
+// The area code is written as NULL when it is empty rather than as an empty
+// string: the column is a foreign key into geo_areas, and ” is not an area.
+func (r *Repository) UpsertMerchantLocation(ctx context.Context, m ports.MerchantPoint) error {
+	var areaCode *string
+	if m.AreaCode != "" {
+		code := m.AreaCode
+		areaCode = &code
+	}
+
+	if _, err := r.db.Exec(ctx, `
+		INSERT INTO geo_merchant_locations (merchant_id, location, division_code, area_code, is_active)
+		VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6)
+		ON CONFLICT (merchant_id) DO UPDATE
+		    SET location      = EXCLUDED.location,
+		        division_code = EXCLUDED.division_code,
+		        area_code     = EXCLUDED.area_code,
+		        is_active     = EXCLUDED.is_active,
+		        updated_at    = now()`,
+		m.MerchantID, m.Location.Lng(), m.Location.Lat(),
+		string(m.Division), areaCode, m.Active); err != nil {
+		return fmt.Errorf("upsert merchant location: %w", err)
+	}
+	return nil
+}
+
+// DeleteMerchantLocation removes a merchant from the spatial index.
+func (r *Repository) DeleteMerchantLocation(ctx context.Context, merchantID string) error {
+	if _, err := r.db.Exec(ctx,
+		`DELETE FROM geo_merchant_locations WHERE merchant_id = $1`, merchantID); err != nil {
+		return fmt.Errorf("delete merchant location: %w", err)
+	}
+	return nil
 }

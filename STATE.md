@@ -1,7 +1,7 @@
 # BUILD STATE
-last_updated: 2026-09-13T00:00:00Z
-current_phase: P06
-current_task: P06.T01
+last_updated: 2026-09-14T00:00:00Z
+current_phase: P07
+current_task: P07.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -14,7 +14,8 @@ P02 DONE       geo module — domain, PostGIS repository, HTTP transport, OpenAP
 P03 DONE       config module — D5 registry, area resolution, audit log, admin API
 P04 DONE       identity — phone+OTP, JWT, Redis refresh rotation, RBAC, auto-login
 P05 DONE       user — profile, address book, map pin, default address, area resolution
-P06..P20 TODO
+P06 DONE       merchant — nationwide registration (D1), documents, approval workflow, hours, holiday mode
+P07..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -56,10 +57,24 @@ P05.T06 DONE  transport — /v1/me and /v1/me/addresses, caller-scoped
 P05.T07 DONE  unit, integration and E2E tests at 100%
 P05.T08 DONE  docs/technical/user.md, Appendix A note
 
+## P06 tasks
+P06.T01 DONE  domain — Type, Status with the whole transition table, Merchant, Pin, Placement
+P06.T02 DONE  domain — documents per shop type, weekly hours, holiday mode
+P06.T03 DONE  ports + external/geo seam for placement and index publication
+P06.T04 DONE  use cases — registration, documents, submission, withdrawal
+P06.T05 DONE  use cases — moderation (approve/reject/suspend/reinstate) and the admin queue
+P06.T06 DONE  use cases — opening hours and holiday mode, outside the review freeze
+P06.T07 DONE  geo gains PlaceMerchant, RemoveMerchant and ResolveDivision (D1)
+P06.T08 DONE  migration 0005 — merchants, documents, status events
+P06.T09 DONE  MerchantContract + service, documents deliberately excluded
+P06.T10 DONE  transport — /v1/merchants owner routes, /v1/admin/merchants queue
+P06.T11 DONE  demo seed — 14 approved shops behind the points geo already places
+P06.T12 DONE  unit, integration and E2E tests at 100%
+P06.T13 DONE  OpenAPI paths + schemas, docs/technical/merchant.md, Appendix A note
+
 ## Next phase
-P06 — Merchant. Nationwide registration, business details, documents, approval
-workflow, hours, holiday mode, and the three merchant types (restaurant,
-grocery, pharmacy). D1: a merchant may register from anywhere in Bangladesh.
+P07 — Catalogue. Categories, items, variants, add-ons, combos, stock, scheduled
+availability, bulk update, and the per-merchant-type schema differences.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -78,7 +93,7 @@ grocery, pharmacy). D1: a merchant may register from anywhere in Bangladesh.
 
 ## Coverage
 backend total: 100.0%
-last verified: 2026-09-13 (local PostGIS 3.4)
+last verified: 2026-09-14 (local PostGIS 3.4)
 exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (ADR 0006)
 
 ## Notes for next session
@@ -110,3 +125,19 @@ exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (AD
   refresh token exists**. Spec is written in `docs/build/phases/P04.md` and
   `docs/decisions/0005-redis-session-store.md`. Redis is already in
   `docker-compose.yml`, the CI service matrix and `.env.example`.
+- A real D1 bug surfaced in P06 and is worth remembering: merchant registration
+  first used `GeoContract.ResolveArea`, which requires a *mapped area*. A shop in
+  an upazila we have not drawn an area for sits inside a division and outside
+  every area, and was refused — making whether a merchant may join depend on how
+  finely we have mapped their district. Geo now offers `ResolveDivision`
+  alongside it (division required, area best-effort). Addresses keep the strict
+  call; registration uses the lenient one. Only the E2E test against real seeded
+  geometry caught this — the unit fakes resolved everything.
+- The demo merchant ids in `seed/0005_merchant.sql` are the same fourteen ids
+  `seed/0001_geo.sql` places on the map, and the same ids the generated logos in
+  `internal/platform/assets/demo/merchants/` are named after. Changing one list
+  means changing all three; `TestTheDemoMerchantsAreRealShops` fails if they
+  drift apart.
+- `psql -c "a; b; c"` runs the statements in one transaction, so a failure in the
+  third rolls back the first two. Resetting the local schema by hand needs
+  separate `-c` invocations.

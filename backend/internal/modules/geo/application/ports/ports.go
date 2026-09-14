@@ -45,4 +45,27 @@ type GeoRepository interface {
 	// CountMerchantsWithinRadius returns only the count, which the expansion
 	// decision (ALG-02) needs without paying to transfer the rows.
 	CountMerchantsWithinRadius(ctx context.Context, centre domain.Coordinate, radius domain.Distance, division domain.DivisionCode) (int, error)
+
+	// UpsertMerchantLocation records a merchant's point and whether it is
+	// searchable, creating the row if it is new.
+	UpsertMerchantLocation(ctx context.Context, m MerchantPoint) error
+
+	// DeleteMerchantLocation removes a merchant from the spatial index.
+	DeleteMerchantLocation(ctx context.Context, merchantID string) error
+}
+
+// MerchantPoint is a merchant location as it is written, placement included.
+//
+// Distinct from MerchantLocation, which is what a search reads back: a write
+// carries the resolved division and area, and a read carries a distance. One
+// struct doing both would have a field that is meaningless in half its uses.
+type MerchantPoint struct {
+	MerchantID string
+	Location   domain.Coordinate
+	Division   domain.DivisionCode
+	// AreaCode may be empty: a point can fall inside a division but outside
+	// every mapped area, and refusing the merchant for that would make
+	// registration depend on how finely we have drawn the map (D1).
+	AreaCode string
+	Active   bool
 }

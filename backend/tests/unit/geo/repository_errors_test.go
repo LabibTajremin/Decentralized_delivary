@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/geo/domain"
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 )
@@ -94,6 +95,13 @@ type stubQuerier struct {
 	rowResults   []stubRow
 	queryCalls   int
 	rowCalls     int
+
+	// execErr is what Exec returns; the write paths have no rows to script.
+	execErr error
+}
+
+func (q *stubQuerier) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, q.execErr
 }
 
 func (q *stubQuerier) Query(context.Context, string, ...any) (pgx.Rows, error) {
@@ -293,5 +301,26 @@ func TestBoundaryScanSurfacesVertexScanFailure(t *testing.T) {
 	})
 	if _, err := repo.Divisions(ctx()); !errors.Is(err, errQuery) {
 		t.Errorf("error = %v, want the vertex scan failure wrapped", err)
+	}
+}
+
+// TestPublishingAMerchantSurfacesAWriteFailure. A publish that failed quietly
+// would leave an approved shop with no point in the index — visible in the
+// admin console and unfindable by every customer.
+func TestPublishingAMerchantSurfacesAWriteFailure(t *testing.T) {
+	repo := geopg.New(&stubQuerier{execErr: errQuery})
+
+	err := repo.UpsertMerchantLocation(context.Background(), ports.MerchantPoint{
+		MerchantID: "mch_1",
+		Location:   domain.MustCoordinate(23.7461, 90.3742),
+		Division:   domain.DivisionDhaka,
+		AreaCode:   "DHN",
+	})
+	if !errors.Is(err, errQuery) {
+		t.Errorf("error = %v, want the failure wrapped", err)
+	}
+
+	if err := repo.DeleteMerchantLocation(context.Background(), "mch_1"); !errors.Is(err, errQuery) {
+		t.Errorf("delete: error = %v, want the failure wrapped", err)
 	}
 }

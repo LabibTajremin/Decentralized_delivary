@@ -222,3 +222,169 @@ func TestCountWithinFailureModes(t *testing.T) {
 		t.Errorf("repo failure Kind = %v, want KindUnavailable", errs.KindOf(err))
 	}
 }
+
+// ------------------------------------------------------- placing a merchant
+
+// TestGeoDerivesTheDivisionItself: the division decides who can ever see a shop
+// (D3), so a division code supplied by the merchant module would be a division
+// code that can be wrong.
+// dhaka is a point inside the Dhaka division of the fake map.
+func dhaka(t *testing.T) domain.Coordinate {
+	t.Helper()
+	return domain.MustCoordinate(23.81, 90.41)
+}
+
+func TestGeoDerivesTheDivisionItself(t *testing.T) {
+	repo := newFake(t)
+	uc := application.NewPlaceMerchantUseCase(repo)
+
+	if err := uc.Execute(context.Background(), "mch_1", dhaka(t), true); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(repo.placed) != 1 {
+		t.Fatalf("placed = %d, want 1", len(repo.placed))
+	}
+	placed := repo.placed[0]
+	if placed.MerchantID != "mch_1" || !placed.Active {
+		t.Errorf("placed = %+v", placed)
+	}
+	if placed.Division == "" {
+		t.Error("no division reached the write")
+	}
+	if placed.AreaCode != "DHN" {
+		t.Errorf("area = %q, want the resolved one", placed.AreaCode)
+	}
+}
+
+// TestAShopOutsideEveryAreaIsStillPlaced: whether a merchant may join must not
+// depend on how finely we have drawn the map of their upazila (D1).
+func TestAShopOutsideEveryAreaIsStillPlaced(t *testing.T) {
+	repo := newFake(t)
+	repo.areaErr = domain.ErrUnknownDivision
+	uc := application.NewPlaceMerchantUseCase(repo)
+
+	if err := uc.Execute(context.Background(), "mch_1", dhaka(t), true); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(repo.placed) != 1 || repo.placed[0].AreaCode != "" {
+		t.Errorf("placed = %+v, want a row with no area", repo.placed)
+	}
+}
+
+// TestAShopOutsideEveryDivisionIsRefused: accepting it would create a row no
+// search can ever return, which looks to the merchant like a successful
+// registration and an empty order book.
+func TestAShopOutsideEveryDivisionIsRefused(t *testing.T) {
+	repo := newFake(t)
+	repo.divisionErr = domain.ErrUnknownDivision
+	uc := application.NewPlaceMerchantUseCase(repo)
+
+	err := uc.Execute(context.Background(), "mch_1", dhaka(t), true)
+	if got := errs.CodeOf(err); got != "outside_service_area" {
+		t.Errorf("code = %q, want outside_service_area", got)
+	}
+	if len(repo.placed) != 0 {
+		t.Error("the shop was placed anyway")
+	}
+}
+
+func TestPlacingAShopNeedsAnID(t *testing.T) {
+	uc := application.NewPlaceMerchantUseCase(newFake(t))
+	err := uc.Execute(context.Background(), "  ", dhaka(t), true)
+	if got := errs.CodeOf(err); got != "merchant_id_required" {
+		t.Errorf("code = %q, want merchant_id_required", got)
+	}
+}
+
+func TestPlacingAShopReportsADatabaseThatIsDown(t *testing.T) {
+	cases := map[string]func(*fakeRepo){
+		"division lookup": func(r *fakeRepo) { r.divisionErr = errBoom },
+		"write":           func(r *fakeRepo) { r.upsertErr = errBoom },
+	}
+	for name, broken := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := newFake(t)
+			broken(repo)
+			err := application.NewPlaceMerchantUseCase(repo).Execute(
+				context.Background(), "mch_1", dhaka(t), true)
+			if errs.KindOf(err) != errs.KindUnavailable {
+				t.Errorf("kind = %v, want unavailable", errs.KindOf(err))
+			}
+		})
+	}
+}
+
+func TestRemovingAShopFromTheIndex(t *testing.T) {
+	repo := newFake(t)
+	uc := application.NewPlaceMerchantUseCase(repo)
+
+	if err := uc.Remove(context.Background(), "mch_1"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if len(repo.removed) != 1 || repo.removed[0] != "mch_1" {
+		t.Errorf("removed = %v", repo.removed)
+	}
+
+	repo.deleteErr = errBoom
+	if got := errs.KindOf(uc.Remove(context.Background(), "mch_1")); got != errs.KindUnavailable {
+		t.Errorf("kind = %v, want unavailable", got)
+	}
+}
+
+// ------------------------------------------------ resolving only a division
+
+// TestResolvingADivisionToleratesAnUnmappedArea is D1 in the geo module: a
+// point inside a division and outside every drawn area still resolves, because
+// whether a merchant may register must not depend on how finely we have mapped
+// their upazila.
+func TestResolvingADivisionToleratesAnUnmappedArea(t *testing.T) {
+	repo := newFake(t)
+	repo.areaErr = domain.ErrUnknownDivision
+	uc := application.NewResolveAreaUseCase(repo)
+
+	got, err := uc.Division(context.Background(), domain.MustCoordinate(23.81, 90.41))
+	if err != nil {
+		t.Fatalf("Division: %v", err)
+	}
+	if got.Division.Code != domain.DivisionDhaka {
+		t.Errorf("division = %v, want DHA", got.Division.Code)
+	}
+	if got.Area.Code != "" {
+		t.Errorf("area = %q, want none", got.Area.Code)
+	}
+
+	// The same call still reports the area when there is one, so a shop in a
+	// mapped area is not deprived of its config scope.
+	withArea, err := application.NewResolveAreaUseCase(newFake(t)).Division(
+		context.Background(), domain.MustCoordinate(23.81, 90.41))
+	if err != nil {
+		t.Fatalf("Division: %v", err)
+	}
+	if withArea.Area.Code != "DHN" {
+		t.Errorf("area = %q, want DHN", withArea.Area.Code)
+	}
+}
+
+// TestResolvingADivisionStillRefusesAPointOutsideBangladesh: the division is
+// the D3 ceiling, and a point in no division is not in the country.
+func TestResolvingADivisionStillRefusesAPointOutsideBangladesh(t *testing.T) {
+	repo := newFake(t)
+	repo.divisionErr = domain.ErrUnknownDivision
+
+	_, err := application.NewResolveAreaUseCase(repo).Division(
+		context.Background(), domain.MustCoordinate(48.8584, 2.2945))
+	if got := errs.CodeOf(err); got != "outside_service_area" {
+		t.Errorf("code = %q, want outside_service_area", got)
+	}
+}
+
+func TestResolvingADivisionReportsADatabaseThatIsDown(t *testing.T) {
+	repo := newFake(t)
+	repo.divisionErr = errBoom
+
+	_, err := application.NewResolveAreaUseCase(repo).Division(
+		context.Background(), domain.MustCoordinate(23.81, 90.41))
+	if errs.KindOf(err) != errs.KindUnavailable {
+		t.Errorf("kind = %v, want unavailable", errs.KindOf(err))
+	}
+}

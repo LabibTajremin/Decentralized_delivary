@@ -44,6 +44,19 @@ func (s *stubGeo) CountMerchantsWithinRadius(_ context.Context, p contract.Point
 	return s.count, s.err
 }
 
+// The geo HTTP surface is read-only: nothing it serves places or withdraws a
+// merchant. These satisfy the contract so the stub stays a whole geo module
+// rather than a partial one a handler could accidentally depend on.
+func (s *stubGeo) ResolveDivision(ctx context.Context, p contract.Point) (contract.Area, error) {
+	return s.ResolveArea(ctx, p)
+}
+
+func (s *stubGeo) PlaceMerchant(context.Context, contract.MerchantPlacement) error {
+	return s.err
+}
+
+func (s *stubGeo) RemoveMerchant(context.Context, string) error { return s.err }
+
 func (s *stubGeo) DistanceBetween(_ context.Context, a, b contract.Point) (float64, error) {
 	s.gotFrom, s.gotTo = a, b
 	return s.distance, s.err

@@ -64,3 +64,28 @@ func (uc *ResolveAreaUseCase) Execute(ctx context.Context, c domain.Coordinate) 
 
 	return ResolvedArea{Area: area, Division: division}, nil
 }
+
+// Division places a coordinate when only the division must be known.
+//
+// The area is best-effort: a point can sit inside a division and outside every
+// area we have drawn, and for the callers that use this — merchant
+// registration (D1) — refusing it would make whether someone may join depend on
+// how finely we have mapped their upazila. The division is not optional, because
+// it is the D3 ceiling and a point in no division is not in Bangladesh.
+func (uc *ResolveAreaUseCase) Division(ctx context.Context, c domain.Coordinate) (ResolvedArea, error) {
+	division, err := uc.repo.DivisionContaining(ctx, c)
+	if err != nil {
+		if errors.Is(err, domain.ErrUnknownDivision) {
+			return ResolvedArea{}, errs.Wrap(err, errs.KindNotFound, "outside_service_area",
+				"That address is outside the area we serve.")
+		}
+		return ResolvedArea{}, errs.Wrap(err, errs.KindUnavailable, "geo_lookup_failed",
+			"We could not check this location. Please try again.")
+	}
+
+	resolved := ResolvedArea{Division: division}
+	if area, areaErr := uc.repo.AreaContaining(ctx, c); areaErr == nil {
+		resolved.Area = area
+	}
+	return resolved, nil
+}
