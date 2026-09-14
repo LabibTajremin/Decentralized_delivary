@@ -82,6 +82,13 @@ jobs:
         working-directory: backend/tests
         run: go test ./unit/... -run 'TestDomainImportsNothingInternal|TestApplicationImportsDomainOnly|TestTransportDoesNotImportInfrastructure|TestCrossModuleImportsGoThroughExternal' -count=1 -v
 
+      # api/openapi.yaml is what the Flutter client is generated from (P17). An
+      # undocumented route is one no client can call; a documented route nothing
+      # serves is a client method that 404s in production. Both fail here.
+      - name: OpenAPI matches the served routes
+        working-directory: backend/tests
+        run: go test ./unit/openapi/... -count=1 -v
+
       # Checks 5 and 6 — tests run from the separate module, gated at 100%.
       - name: tests and coverage gate
         run: ./scripts/coverage-gate.sh

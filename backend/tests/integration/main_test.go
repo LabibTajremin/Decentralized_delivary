@@ -10,7 +10,13 @@ import (
 
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/migrate"
 	"github.com/rootlogic-lab/delivery/backend/migrations"
+	"github.com/rootlogic-lab/delivery/backend/tests/dbtest"
 )
+
+// suiteURL is the scoped connection string every test in this package uses.
+// Reading DATABASE_URL directly would bypass the schema isolation and put these
+// tests back in the E2E suite's way.
+var suiteURL string
 
 // TestMain brings the database to a known state before any integration test
 // runs, using the same migrator the deployed binary uses.
@@ -20,14 +26,11 @@ import (
 // tool that will actually apply it in production; running the real migrator
 // here means every integration run is also a test of `migrate up`.
 func TestMain(m *testing.M) {
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		fmt.Fprintln(os.Stderr,
-			"integration: DATABASE_URL is not set. These tests need a real PostGIS database;\n"+
-				"run `docker compose up -d postgres` or point DATABASE_URL at one.")
-		os.Exit(1)
-	}
-	if err := prepare(url); err != nil {
+	// Its own schema: Go runs package test binaries concurrently, and this
+	// suite tears the schema down on every run. Sharing one with the E2E suite
+	// means each destroys the other's tables.
+	suiteURL = dbtest.MustSchemaURL("integration")
+	if err := prepare(suiteURL); err != nil {
 		fmt.Fprintf(os.Stderr, "integration: %v\n", err)
 		os.Exit(1)
 	}

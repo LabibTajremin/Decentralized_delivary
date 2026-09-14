@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -19,19 +18,20 @@ import (
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 )
 
-// connect opens a connection, failing the run when no database is configured.
-// It deliberately does not t.Skip: a silent skip would let the coverage gate
-// report success while the repository was never executed.
+// connect opens a connection on the suite's own schema.
+//
+// It uses suiteURL rather than DATABASE_URL directly: the raw URL has no
+// search_path, so a connection made from it would land in public and collide
+// with the E2E suite running concurrently.
+//
+// TestMain has already failed the run if no database is configured, so there is
+// nothing to skip here — and a silent skip would let the coverage gate report
+// success while the repository was never executed.
 func connect(t *testing.T) *pgx.Conn {
 	t.Helper()
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		t.Fatal("DATABASE_URL is not set. Integration tests need a real PostGIS database; " +
-			"run `docker compose up -d postgres` or point DATABASE_URL at one.")
-	}
-	conn, err := pgx.Connect(context.Background(), url)
+	conn, err := pgx.Connect(context.Background(), suiteURL)
 	if err != nil {
-		t.Fatalf("connect to %s: %v", url, err)
+		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close(context.Background()) })
 	return conn

@@ -17,6 +17,10 @@ servers:
 tags:
   - name: health
   - name: auth
+  - name: geo
+    description: |
+      Administrative geography and spatial queries. Every distance in the system
+      comes from here, so pricing, dispatch and the client all quote one number.
 
 paths:
   /healthz:
@@ -34,6 +38,116 @@ paths:
                 required: [status]
                 properties:
                   status: { type: string, example: ok }
+
+  /v1/geo/resolve:
+    get:
+      tags: [geo]
+      summary: Place a coordinate in the administrative hierarchy
+      description: |
+        Resolves a point to its area, district and division. Config resolution
+        keys off this (area → district → division → global, Appendix B), so an
+        address that cannot be placed cannot be priced or served.
+      security: []
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, format: double }, example: 23.7461 }
+        - { name: lng, in: query, required: true, schema: { type: number, format: double }, example: 90.3742 }
+      responses:
+        "200":
+          description: The point is inside the service area
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Area" }
+        "400":
+          description: A parameter is missing or not a number
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: |
+            The coordinate is valid but falls outside every division
+            (`outside_service_area`). This is ordinary traffic from a place we
+            do not cover yet, not a client fault — which is why it is not a 400.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/geo/merchants:
+    get:
+      tags: [geo]
+      summary: Merchants within a radius, nearest first
+      description: |
+        Implements ALG-01. The division ceiling (D3) is part of the query, not a
+        filter applied afterwards, so results can never cross a division
+        boundary however large the radius.
+
+        `distance_m` is the server's number. Clients render it and never
+        recompute it: pricing bands off this same value, and two different
+        distances for one journey is what 2.9 forbids.
+      security: []
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, format: double } }
+        - { name: lng, in: query, required: true, schema: { type: number, format: double } }
+        - name: radius_m
+          in: query
+          required: true
+          description: |
+            Search radius in metres, 1 to 25000. This is a transport sanity
+            bound only; the business radius for an area comes from the config
+            module.
+          schema: { type: number, format: double, minimum: 1, maximum: 25000 }
+        - name: limit
+          in: query
+          description: Values above the maximum are clamped, not rejected.
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Results, possibly empty
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [merchants, count, radius_m]
+                properties:
+                  merchants:
+                    type: array
+                    items: { $ref: "#/components/schemas/NearbyMerchant" }
+                  count:    { type: integer }
+                  radius_m: { type: number, format: double }
+        "400":
+          description: A parameter is missing, not a number, or out of range
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/geo/distance:
+    get:
+      tags: [geo]
+      summary: Great-circle distance between two points
+      description: |
+        The single source of distance for the whole system. Pricing and dispatch
+        call this rather than computing their own, so every quoted fee and every
+        assignment decision agrees.
+      security: []
+      parameters:
+        - { name: from_lat, in: query, required: true, schema: { type: number, format: double } }
+        - { name: from_lng, in: query, required: true, schema: { type: number, format: double } }
+        - { name: to_lat,   in: query, required: true, schema: { type: number, format: double } }
+        - { name: to_lng,   in: query, required: true, schema: { type: number, format: double } }
+      responses:
+        "200":
+          description: The distance in metres
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [distance_m]
+                properties:
+                  distance_m: { type: number, format: double, example: 190700 }
+        "400":
+          description: A parameter is missing or not a valid coordinate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 components:
   securitySchemes:
@@ -72,7 +186,54 @@ components:
       properties:
         code:    { type: string, example: invalid_refresh_token }
         message: { type: string }
-        details: { type: object, additionalProperties: true }
+        details:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Structured context, such as which parameter was rejected. Never
+            present on a 500: an internal error's own message may name a table
+            or a host, so it is replaced with a generic one before it leaves
+            the process.
+
+    ErrorResponse:
+      type: object
+      description: |
+        Every failure uses this envelope, so a client can branch on the body
+        shape alone without inspecting the status code first.
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/Error" }
+
+    Area:
+      type: object
+      description: The administrative placement of a coordinate.
+      required: [area_code, area_name, district_code, division_code, division_name]
+      properties:
+        area_code:     { type: string, example: DHK-DHM }
+        area_name:     { type: string, example: Dhanmondi }
+        district_code: { type: string, example: DHK }
+        division_code:
+          type: string
+          enum: [DHA, CTG, KHU, RAJ, BAR, SYL, RAN, MYM]
+          description: |
+            One of Bangladesh's eight divisions. This is the hard geographic
+            boundary of the system: radius expansion can never cross it (D3),
+            and no admin setting can disable that.
+        division_name: { type: string, example: Dhaka }
+
+    NearbyMerchant:
+      type: object
+      required: [merchant_id, lat, lng, distance_m]
+      properties:
+        merchant_id: { type: string, example: MER-DEMO-0001 }
+        lat:         { type: number, format: double }
+        lng:         { type: number, format: double }
+        distance_m:
+          type: number
+          format: double
+          description: |
+            Straight-line distance from the search centre, computed by the
+            server. The client displays it and never recalculates it.
 
 security:
   - bearerAuth: []

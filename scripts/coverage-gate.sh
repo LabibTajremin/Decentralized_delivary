@@ -8,18 +8,32 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATE="${COVERAGE_GATE:-100.0}"
-BACKEND_PKGS="github.com/rootlogic-lab/delivery/backend/..."
+# Enumerated from the backend module rather than written as
+# "…/backend/..." — that wildcard also matches the test module, whose import
+# path is .../backend/tests, so a test helper package would be instrumented and
+# gated as if it were production code. The gate measures the backend module and
+# nothing else.
+BACKEND_PKGS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../backend" && go list ./... | paste -sd, -)"
 EXCLUSIONS="${REPO_ROOT}/backend/tests/coverage-exclusions.txt"
 
 cd "${REPO_ROOT}/backend/tests"
 
 # -count=1 is mandatory: the architecture guard tests read files outside their
 # own package, so a cached PASS can hide a real violation.
+# The sed trims go's per-package echo of the whole -coverpkg list, which is now
+# every backend package and would otherwise bury the result.
+set +e
 go test ./... \
   -coverpkg="${BACKEND_PKGS}" \
   -coverprofile=coverage.raw.out \
   -covermode=atomic \
-  -count=1
+  -count=1 2>&1 | sed -E 's/ of statements in .*/ of backend statements/'
+TEST_STATUS=${PIPESTATUS[0]}
+set -e
+if [[ "${TEST_STATUS}" -ne 0 ]]; then
+  echo "FAIL: tests did not pass; coverage is not meaningful until they do" >&2
+  exit "${TEST_STATUS}"
+fi
 
 if [[ ! -s coverage.raw.out ]]; then
   echo "coverage: no profile produced" >&2

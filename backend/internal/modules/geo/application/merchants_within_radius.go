@@ -48,7 +48,7 @@ func (uc *MerchantsWithinRadiusUseCase) Execute(ctx context.Context, q RadiusQue
 
 	division, err := uc.repo.DivisionContaining(ctx, q.Centre)
 	if err != nil {
-		return nil, errs.Wrap(err, errs.KindInvalid, "outside_service_area",
+		return nil, errs.Wrap(err, errs.KindNotFound, "outside_service_area",
 			"We do not deliver to this location yet.")
 	}
 
@@ -69,7 +69,7 @@ func (uc *MerchantsWithinRadiusUseCase) CountWithin(ctx context.Context, centre 
 	}
 	division, err := uc.repo.DivisionContaining(ctx, centre)
 	if err != nil {
-		return 0, errs.Wrap(err, errs.KindInvalid, "outside_service_area",
+		return 0, errs.Wrap(err, errs.KindNotFound, "outside_service_area",
 			"We do not deliver to this location yet.")
 	}
 	n, err := uc.repo.CountMerchantsWithinRadius(ctx, centre, radius, division.Code)

@@ -31,14 +31,21 @@ type ResolvedArea struct {
 	Division domain.Division
 }
 
-// Execute resolves a coordinate. A point outside Bangladesh returns a
-// KindInvalid error with a message safe to show the user, because that is a
-// real case: someone travelling, or a GPS fix that landed in the Bay of Bengal.
+// Execute resolves a coordinate.
+//
+// A point outside every division is KindNotFound, not KindInvalid: the caller
+// sent a perfectly well-formed coordinate, and what is missing is a service
+// area covering it. Keeping the two apart matters operationally — a rise in
+// invalid_coordinate means a client is sending nonsense and is our bug, while
+// a rise in outside_service_area is ordinary traffic from people in places we
+// have not reached yet. Collapsing both into 400 would hide the first inside
+// the second. The message is written for the user, because this is a case they
+// will really hit: someone travelling, or a GPS fix that landed in the bay.
 func (uc *ResolveAreaUseCase) Execute(ctx context.Context, c domain.Coordinate) (ResolvedArea, error) {
 	division, err := uc.repo.DivisionContaining(ctx, c)
 	if err != nil {
 		if errors.Is(err, domain.ErrUnknownDivision) {
-			return ResolvedArea{}, errs.Wrap(err, errs.KindInvalid, "outside_service_area",
+			return ResolvedArea{}, errs.Wrap(err, errs.KindNotFound, "outside_service_area",
 				"We do not deliver to this location yet.")
 		}
 		return ResolvedArea{}, errs.Wrap(err, errs.KindUnavailable, "geo_lookup_failed",
@@ -48,7 +55,7 @@ func (uc *ResolveAreaUseCase) Execute(ctx context.Context, c domain.Coordinate) 
 	area, err := uc.repo.AreaContaining(ctx, c)
 	if err != nil {
 		if errors.Is(err, domain.ErrUnknownDivision) {
-			return ResolvedArea{}, errs.Wrap(err, errs.KindInvalid, "outside_service_area",
+			return ResolvedArea{}, errs.Wrap(err, errs.KindNotFound, "outside_service_area",
 				"We do not deliver to this location yet.")
 		}
 		return ResolvedArea{}, errs.Wrap(err, errs.KindUnavailable, "geo_lookup_failed",

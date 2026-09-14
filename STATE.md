@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-13T00:00:00Z
-current_phase: P02
-current_task: P02.T03
+current_phase: P03
+current_task: P03.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -10,15 +10,21 @@ blocker_reason: ""
 ## Phase status
 P00 DONE       foundation, gates, CI
 P01 DONE       shared kernel, 100% covered
-P02 IN_PROGRESS geo module — domain, PostGIS repository, migrations, seed done;
-               transport and external service outstanding
+P02 DONE       geo module — domain, PostGIS repository, HTTP transport, OpenAPI, docs
 P03..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
 P02.T02 DONE  PostGIS repository — ALG-01 radius search, ALG-03 containment
-P02.T03 TODO  geo transport (HTTP) and external/ service for other modules
-P02.T04 TODO  geo technical docs
+P02.T03 DONE  shared httpx transport layer — respond, request, middleware
+P02.T04 DONE  geo HTTP transport, mounted in cmd/api behind the middleware chain
+P02.T05 DONE  OpenAPI paths + schemas, with a drift check in CI
+P02.T06 DONE  docs/technical/geo.md
+
+## Next phase
+P03 — Config module. Per-area variable store with resolution order
+area -> district -> division -> global, admin overrides, change audit (D5).
+See docs/build/appendix-b-config.md.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,

@@ -36,13 +36,17 @@ func TestResolveAreaSucceeds(t *testing.T) {
 	}
 }
 
-func TestResolveAreaOutsideBangladeshIsAUserError(t *testing.T) {
+// A point outside every division is not-found, not invalid: the coordinate was
+// well-formed and what is missing is a service area. Keeping the two apart lets
+// monitoring tell a client bug (invalid_coordinate) from ordinary traffic in an
+// uncovered place (outside_service_area).
+func TestResolveAreaOutsideBangladeshIsNotFound(t *testing.T) {
 	repo := newFake(t)
 	uc := application.NewResolveAreaUseCase(repo)
 
 	_, err := uc.Execute(context.Background(), domain.MustCoordinate(15, 88))
-	if errs.KindOf(err) != errs.KindInvalid {
-		t.Errorf("Kind = %v, want KindInvalid", errs.KindOf(err))
+	if errs.KindOf(err) != errs.KindNotFound {
+		t.Errorf("Kind = %v, want KindNotFound", errs.KindOf(err))
 	}
 	if errs.CodeOf(err) != "outside_service_area" {
 		t.Errorf("Code = %q, want outside_service_area", errs.CodeOf(err))
@@ -73,8 +77,8 @@ func TestResolveAreaHandlesAreaLookupFailures(t *testing.T) {
 	repo := newFake(t)
 	repo.areaErr = domain.ErrUnknownDivision
 	uc := application.NewResolveAreaUseCase(repo)
-	if _, err := uc.Execute(context.Background(), domain.MustCoordinate(23.81, 90.41)); errs.KindOf(err) != errs.KindInvalid {
-		t.Errorf("unknown area Kind = %v, want KindInvalid", errs.KindOf(err))
+	if _, err := uc.Execute(context.Background(), domain.MustCoordinate(23.81, 90.41)); errs.KindOf(err) != errs.KindNotFound {
+		t.Errorf("unknown area Kind = %v, want KindNotFound", errs.KindOf(err))
 	}
 
 	repo2 := newFake(t)
