@@ -58,15 +58,15 @@ type merchantCardBody struct {
 	ID         string      `json:"id"`
 	Name       string      `json:"name"`
 	Type       string      `json:"type"`
-	LogoURL    string      `json:"logoUrl,omitempty"`
+	LogoURL    string      `json:"logo_url,omitempty"`
 	Phone      string      `json:"phone,omitempty"`
-	AreaName   string      `json:"areaName,omitempty"`
+	AreaName   string      `json:"area_name,omitempty"`
 	Lat        float64     `json:"lat"`
 	Lng        float64     `json:"lng"`
-	DistanceM  float64     `json:"distanceM"`
+	DistanceM  float64     `json:"distance_m"`
 	Distance   string      `json:"distance"`
-	IsOpenNow  bool        `json:"isOpenNow"`
-	OpenStatus string      `json:"openStatus"`
+	IsOpenNow  bool        `json:"is_open_now"`
+	OpenStatus string      `json:"open_status"`
 	Delivery   deliveryFee `json:"delivery"`
 }
 
@@ -82,21 +82,21 @@ type deliveryFee struct {
 // expansionBody is the whole expansion decision, already made.
 type expansionBody struct {
 	Level       int     `json:"level"`
-	RadiusM     float64 `json:"radiusM"`
+	RadiusM     float64 `json:"radius_m"`
 	Radius      string  `json:"radius"`
 	Stage       string  `json:"stage"`
-	CanExpand   bool    `json:"canExpand"`
+	CanExpand   bool    `json:"can_expand"`
 	Offered     bool    `json:"offered"`
-	AtCeiling   bool    `json:"atCeiling"`
-	NextLevel   int     `json:"nextLevel,omitempty"`
-	NextRadiusM float64 `json:"nextRadiusM,omitempty"`
-	NextRadius  string  `json:"nextRadius,omitempty"`
+	AtCeiling   bool    `json:"at_ceiling"`
+	NextLevel   int     `json:"next_level,omitempty"`
+	NextRadiusM float64 `json:"next_radius_m,omitempty"`
+	NextRadius  string  `json:"next_radius,omitempty"`
 }
 
 // searchBody is the search response.
 type searchBody struct {
 	Division  string             `json:"division"`
-	AreaName  string             `json:"areaName,omitempty"`
+	AreaName  string             `json:"area_name,omitempty"`
 	Notice    string             `json:"notice"`
 	Total     int                `json:"total"`
 	Expansion expansionBody      `json:"expansion"`
@@ -105,11 +105,11 @@ type searchBody struct {
 
 // reachBody is the single-merchant reachability response.
 type reachBody struct {
-	MerchantID    string  `json:"merchantId"`
-	DistanceM     float64 `json:"distanceM"`
+	MerchantID    string  `json:"merchant_id"`
+	DistanceM     float64 `json:"distance_m"`
 	Distance      string  `json:"distance"`
 	Reachable     bool    `json:"reachable"`
-	RequiredLevel int     `json:"requiredLevel"`
+	RequiredLevel int     `json:"required_level"`
 	Expanded      bool    `json:"expanded"`
 	Reason        string  `json:"reason,omitempty"`
 }

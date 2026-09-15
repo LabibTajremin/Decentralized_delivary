@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-15T00:00:00Z
-current_phase: P09
-current_task: P09.T01
+current_phase: P10
+current_task: P10.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -17,7 +17,8 @@ P05 DONE       user — profile, address book, map pin, default address, area re
 P06 DONE       merchant — nationwide registration (D1), documents, approval workflow, hours, holiday mode
 P07 DONE       catalogue — per-type schema differences, variants, add-ons, combos, stock, availability, bulk update
 P08 DONE       discovery — local visibility (D1), stepwise expansion with a cost (D2), the division ceiling (D3), ranking
-P09..P20 TODO
+P09 DONE       cart — single merchant, revalidation against live prices and hours, invalidation on address change (D3)
+P10..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -91,10 +92,11 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P09 — Cart. What a customer has chosen, held against a delivery address and
-revalidated against the shop's live prices, stock and hours. Depends on P07 and
-P08: the cart asks discovery whether the shop is still reachable from the
-address (DiscoveryContract.Reach) and catalogue what the lines now cost.
+P10 — Pricing. ALG-05 exactly: piecewise-linear banding by distance, the D2
+expansion multiplier, and the free-delivery threshold. It takes over the
+provisional quoter discovery has been using since P08 (delete
+discovery/infrastructure/fees, add discovery/external/pricing) and gives the
+cart its delivery line. Depends on P03 and P08.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -196,3 +198,15 @@ P08.T05 DONE  provisional delivery quote (ALG-05) behind ports.DeliveryQuoter, r
 P08.T06 DONE  public /v1/discovery transport, OpenAPI paths and schemas
 P08.T07 DONE  unit tests at 100%, E2E over the real seeded geography
 P08.T08 DONE  docs/technical/discovery.md
+
+## P09 tasks
+P09.T01 DONE  domain — Cart, Line, option snapshots, single-merchant rule, merge-on-identical-selection
+P09.T02 DONE  domain — revalidation: CheckLine, Decide, the blocker order, Priced
+P09.T03 DONE  external/ seams to catalogue, merchant and discovery
+P09.T04 DONE  CartUseCase — add, replace, quantity, remove, address, clear; ids in and prices out
+P09.T05 DONE  migration 0007, repository with one-cart-per-user and whole-cart writes
+P09.T06 DONE  CartContract + service, the revalidated cart order will freeze
+P09.T07 DONE  /v1/cart transport, caller-scoped; OpenAPI paths and schemas
+P09.T08 DONE  API-wide snake_case fix: P08 and P09 had shipped camelCase keys
+P09.T09 DONE  unit, integration and E2E tests at 100%
+P09.T10 DONE  docs/technical/cart.md

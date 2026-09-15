@@ -70,3 +70,9 @@ Every module exposes exactly one public contract interface. This is the only sur
 > far is it — and a contract that also exposed the search would put a browse
 > endpoint inside a checkout path. The search result shape stays in discovery's
 > own application layer, where it belongs to the transport that renders it.
+
+> **P09 note.** `CartContract` carries the cart **revalidated**, at today's
+> prices, rather than as it was stored. An order frozen from a stale snapshot is
+> an order the shop disputes. It also carries `Clear`, so order asks the cart to
+> empty itself instead of deleting rows it does not own. See
+> docs/technical/cart.md.

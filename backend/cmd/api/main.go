@@ -19,6 +19,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	goredis "github.com/redis/go-redis/v9"
 
+	cartapp "github.com/rootlogic-lab/delivery/backend/internal/modules/cart/application"
+	cartpg "github.com/rootlogic-lab/delivery/backend/internal/modules/cart/infrastructure/persistence/postgres"
+	carthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/cart/transport/http"
 	catapp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/application"
 	catpg "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/infrastructure/persistence/postgres"
 	cathttp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/transport/http"
@@ -221,12 +224,13 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// ownership against the merchant record; the customer's menu read is
 	// public, because browsing is what the app does before anyone signs in.
 	catRepo := catpg.NewFromPool(pool)
+	catalogueService := catapp.NewService(catRepo, systemClock)
 	cathttp.NewHandler(
 		catapp.NewCategoryUseCase(catRepo, catRepo, merchantService, ids),
 		catapp.NewItemUseCase(catRepo, catRepo, merchantService, systemClock, ids),
 		catapp.NewOptionUseCase(catRepo, merchantService, ids),
 		catapp.NewComboUseCase(catRepo, catRepo, merchantService, ids),
-		catapp.NewService(catRepo, systemClock),
+		catalogueService,
 		cathttp.Guard(authenticator.Authenticated()),
 		func(r *http.Request) (string, bool) {
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
@@ -239,9 +243,28 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// seen, and config says how far the customer can look from here. The fee
 	// quoter is provisional until pricing lands in P10 — see the package note.
 	discoveryQuoter := discofees.NewQuoter(configService)
+	discoveryReach := discoapp.NewReachUseCase(geoService, merchantService, configService)
+	discoveryService := discoapp.NewService(discoveryReach)
 	discohttp.NewHandler(
 		discoapp.NewSearchUseCase(geoService, merchantService, configService, discoveryQuoter),
-		discoapp.NewReachUseCase(geoService, merchantService, configService),
+		discoveryReach,
+	).Register(mux)
+
+	// Cart (P09). One cart per customer, from one shop, held against one
+	// delivery address. Every read revalidates against the shop as it stands —
+	// the menu has been edited since, and the address may have moved into
+	// another division, which D3 makes permanent.
+	cartRepo := cartpg.NewFromPool(pool)
+	cartUseCase := cartapp.NewCartUseCase(
+		cartRepo, catalogueService, merchantService, discoveryService, systemClock, ids,
+	)
+	carthttp.NewHandler(
+		cartUseCase,
+		carthttp.Guard(authenticator.Authenticated()),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
 	).Register(mux)
 
 	// Demo imagery is served only outside production, so generated placeholder

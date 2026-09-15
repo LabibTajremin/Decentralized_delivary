@@ -53,13 +53,13 @@ func TestSearchEndpoint(t *testing.T) {
 		Total     int    `json:"total"`
 		Expansion struct {
 			Level      int     `json:"level"`
-			RadiusM    float64 `json:"radiusM"`
+			RadiusM    float64 `json:"radius_m"`
 			Radius     string  `json:"radius"`
 			Stage      string  `json:"stage"`
-			CanExpand  bool    `json:"canExpand"`
+			CanExpand  bool    `json:"can_expand"`
 			Offered    bool    `json:"offered"`
-			AtCeiling  bool    `json:"atCeiling"`
-			NextRadius string  `json:"nextRadius"`
+			AtCeiling  bool    `json:"at_ceiling"`
+			NextRadius string  `json:"next_radius"`
 		} `json:"expansion"`
 		Merchants []struct {
 			ID       string `json:"id"`
@@ -101,9 +101,9 @@ func TestSearchEndpointAtTheCeiling(t *testing.T) {
 		Expansion struct {
 			Level       int     `json:"level"`
 			Stage       string  `json:"stage"`
-			CanExpand   bool    `json:"canExpand"`
-			AtCeiling   bool    `json:"atCeiling"`
-			NextRadiusM float64 `json:"nextRadiusM"`
+			CanExpand   bool    `json:"can_expand"`
+			AtCeiling   bool    `json:"at_ceiling"`
+			NextRadiusM float64 `json:"next_radius_m"`
 		} `json:"expansion"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -124,10 +124,10 @@ func TestReachEndpoint(t *testing.T) {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	var body struct {
-		MerchantID    string `json:"merchantId"`
+		MerchantID    string `json:"merchant_id"`
 		Distance      string `json:"distance"`
 		Reachable     bool   `json:"reachable"`
-		RequiredLevel int    `json:"requiredLevel"`
+		RequiredLevel int    `json:"required_level"`
 		Expanded      bool   `json:"expanded"`
 		Reason        string `json:"reason"`
 	}

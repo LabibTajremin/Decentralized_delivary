@@ -13,21 +13,21 @@ import (
 
 type discoveryExpansion struct {
 	Level       int     `json:"level"`
-	RadiusM     float64 `json:"radiusM"`
+	RadiusM     float64 `json:"radius_m"`
 	Radius      string  `json:"radius"`
 	Stage       string  `json:"stage"`
-	CanExpand   bool    `json:"canExpand"`
+	CanExpand   bool    `json:"can_expand"`
 	Offered     bool    `json:"offered"`
-	AtCeiling   bool    `json:"atCeiling"`
-	NextRadiusM float64 `json:"nextRadiusM"`
+	AtCeiling   bool    `json:"at_ceiling"`
+	NextRadiusM float64 `json:"next_radius_m"`
 }
 
 type discoveryMerchant struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
 	Type      string  `json:"type"`
-	AreaName  string  `json:"areaName"`
-	DistanceM float64 `json:"distanceM"`
+	AreaName  string  `json:"area_name"`
+	DistanceM float64 `json:"distance_m"`
 	Distance  string  `json:"distance"`
 	Delivery  struct {
 		Minor    int64  `json:"minor"`
@@ -39,7 +39,7 @@ type discoveryMerchant struct {
 
 type discoverySearch struct {
 	Division  string              `json:"division"`
-	AreaName  string              `json:"areaName"`
+	AreaName  string              `json:"area_name"`
 	Notice    string              `json:"notice"`
 	Total     int                 `json:"total"`
 	Expansion discoveryExpansion  `json:"expansion"`
@@ -254,11 +254,11 @@ func TestReachabilityOverRealGeography(t *testing.T) {
 	nearbyID := near.Merchants[0].ID
 
 	type reachBody struct {
-		MerchantID    string  `json:"merchantId"`
-		DistanceM     float64 `json:"distanceM"`
+		MerchantID    string  `json:"merchant_id"`
+		DistanceM     float64 `json:"distance_m"`
 		Distance      string  `json:"distance"`
 		Reachable     bool    `json:"reachable"`
-		RequiredLevel int     `json:"requiredLevel"`
+		RequiredLevel int     `json:"required_level"`
 		Expanded      bool    `json:"expanded"`
 		Reason        string  `json:"reason"`
 	}

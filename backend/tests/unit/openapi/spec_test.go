@@ -19,6 +19,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	carthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/cart/transport/http"
 	cathttp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/transport/http"
 	confighttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	discohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/transport/http"
@@ -79,6 +80,7 @@ func servedRoutes() []string {
 	routes = append(routes, merchanthttp.Patterns()...)
 	routes = append(routes, cathttp.Patterns()...)
 	routes = append(routes, discohttp.Patterns()...)
+	routes = append(routes, carthttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }
