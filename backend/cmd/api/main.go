@@ -29,7 +29,6 @@ import (
 	cfgpg "github.com/rootlogic-lab/delivery/backend/internal/modules/config/infrastructure/persistence/postgres"
 	cfghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	discoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/application"
-	discofees "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/infrastructure/fees"
 	discohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/transport/http"
 	geoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application"
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
@@ -44,6 +43,7 @@ import (
 	merchantapp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/application"
 	merchantpg "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/infrastructure/persistence/postgres"
 	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
+	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
 	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
 	userpg "github.com/rootlogic-lab/delivery/backend/internal/modules/user/infrastructure/persistence/postgres"
 	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
@@ -238,15 +238,18 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		},
 	).Register(mux)
 
+	// Pricing (P10). ALG-05 lives here and nowhere else: discovery quotes a fee
+	// on every shop card and the cart quotes one at checkout, and both go
+	// through this service so the two numbers can never disagree.
+	pricingService := pricingapp.NewService(configService)
+
 	// Discovery (P08). D1's local visibility, D2's expansion and D3's ceiling.
 	// It owns no storage: geo says where shops are, merchant says which may be
 	// seen, and config says how far the customer can look from here. The fee
-	// quoter is provisional until pricing lands in P10 — see the package note.
-	discoveryQuoter := discofees.NewQuoter(configService)
 	discoveryReach := discoapp.NewReachUseCase(geoService, merchantService, configService)
 	discoveryService := discoapp.NewService(discoveryReach)
 	discohttp.NewHandler(
-		discoapp.NewSearchUseCase(geoService, merchantService, configService, discoveryQuoter),
+		discoapp.NewSearchUseCase(geoService, merchantService, configService, pricingService),
 		discoveryReach,
 	).Register(mux)
 
@@ -256,7 +259,7 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// another division, which D3 makes permanent.
 	cartRepo := cartpg.NewFromPool(pool)
 	cartUseCase := cartapp.NewCartUseCase(
-		cartRepo, catalogueService, merchantService, discoveryService, systemClock, ids,
+		cartRepo, catalogueService, merchantService, discoveryService, pricingService, systemClock, ids,
 	)
 	carthttp.NewHandler(
 		cartUseCase,

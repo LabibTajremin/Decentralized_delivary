@@ -3,6 +3,7 @@ package application
 import (
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/domain"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/merchant"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/pricing"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/money"
 )
 
@@ -74,6 +75,11 @@ type View struct {
 	Orderable   bool
 	Blocker     string
 	BlockerText string
+	// Pricing is the receipt — delivery, any surcharge, the total. Absent when
+	// there is nothing true to quote: no address yet, or an address this shop
+	// cannot deliver to. A fee for a journey that cannot happen is a number the
+	// customer would reasonably take for a promise.
+	Pricing *pricing.Quote
 }
 
 // viewOf assembles the rendered cart.

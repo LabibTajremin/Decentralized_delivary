@@ -29,6 +29,34 @@ type cartLineBody struct {
 	} `json:"line_total"`
 }
 
+type cartPricing struct {
+	Delivery struct {
+		Minor   int64  `json:"minor"`
+		Display string `json:"display"`
+	} `json:"delivery"`
+	DeliveryBeforeWaiver struct {
+		Minor int64 `json:"minor"`
+	} `json:"delivery_before_waiver"`
+	ExpansionSurcharge struct {
+		Minor int64 `json:"minor"`
+	} `json:"expansion_surcharge"`
+	FreeDelivery bool `json:"free_delivery"`
+	Total        struct {
+		Minor int64 `json:"minor"`
+	} `json:"total"`
+	DistanceM float64 `json:"distance_m"`
+	Expanded  bool    `json:"expanded"`
+	Rows      []struct {
+		Key    string `json:"key"`
+		Label  string `json:"label"`
+		Amount struct {
+			Minor   int64  `json:"minor"`
+			Display string `json:"display"`
+		} `json:"amount"`
+	} `json:"rows"`
+	Notice string `json:"notice"`
+}
+
 type cartResponse struct {
 	ID           string         `json:"id"`
 	MerchantID   string         `json:"merchant_id"`
@@ -40,9 +68,10 @@ type cartResponse struct {
 		Minor   int64  `json:"minor"`
 		Display string `json:"display"`
 	} `json:"subtotal"`
-	Orderable   bool   `json:"orderable"`
-	Blocker     string `json:"blocker"`
-	BlockerText string `json:"blocker_text"`
+	Orderable   bool         `json:"orderable"`
+	Blocker     string       `json:"blocker"`
+	BlockerText string       `json:"blocker_text"`
+	Pricing     *cartPricing `json:"pricing"`
 }
 
 // seededMenuItem finds an orderable item with no required options, from a
@@ -322,5 +351,62 @@ func TestACartIsPrivateToItsOwner(t *testing.T) {
 	// And nothing at all without a token.
 	if status := getJSON(t, base+"/v1/cart", nil); status != http.StatusUnauthorized {
 		t.Fatalf("an anonymous cart read returned %d, want 401", status)
+	}
+}
+
+// P10's whole reason for existing: the fee on the shop card and the fee on the
+// receipt come from one implementation of ALG-05, so they cannot disagree.
+func TestTheShopCardFeeAndTheCartFeeAgree(t *testing.T) {
+	base, tail, stop := startAuthAPI(t)
+	defer stop()
+
+	customer := signInAs(t, base, tail, uniquePhone(t), "customer phone", "customer")
+
+	// Take a shop from the search, with the fee that search quoted.
+	found := discover(t, base, dhanmondiLat, dhanmondiLng, "limit=1&lang=en")
+	if found.Total == 0 {
+		t.Fatal("no shop near Dhanmondi")
+	}
+	card := found.Merchants[0]
+	itemID, _ := seededMenuItem(t, base, card.ID)
+
+	if status := cartCall(t, http.MethodPost, base+"/v1/cart/items",
+		fmt.Sprintf(`{"merchant_id":%q,"kind":"item","target_id":%q,"quantity":1}`, card.ID, itemID),
+		customer.AccessToken, nil); status != http.StatusOK {
+		t.Fatalf("add: status = %d", status)
+	}
+
+	var priced cartResponse
+	if status := cartCall(t, http.MethodPut, base+"/v1/cart/address?lang=en",
+		fmt.Sprintf(`{"address_id":"ADR-HOME","lat":%f,"lng":%f}`, dhanmondiLat, dhanmondiLng),
+		customer.AccessToken, &priced); status != http.StatusOK {
+		t.Fatalf("address: status = %d", status)
+	}
+	if priced.Pricing == nil {
+		t.Fatalf("a reachable cart was not priced: %+v", priced)
+	}
+
+	// The card's fee and the receipt's fee are the same number, because there
+	// is one implementation of ALG-05 behind both. Compared before any waiver,
+	// since a shop card knows nothing about the order value.
+	if priced.Pricing.DeliveryBeforeWaiver.Minor != card.Delivery.Minor {
+		t.Fatalf("shop card said %d, cart says %d", card.Delivery.Minor,
+			priced.Pricing.DeliveryBeforeWaiver.Minor)
+	}
+	if priced.Pricing.Total.Minor != priced.Subtotal.Minor+priced.Pricing.Delivery.Minor {
+		t.Errorf("the total does not add up: %+v", priced.Pricing)
+	}
+	// The receipt is composed by the server, top to bottom.
+	if len(priced.Pricing.Rows) < 3 {
+		t.Fatalf("receipt = %+v", priced.Pricing.Rows)
+	}
+	if priced.Pricing.Rows[0].Key != "subtotal" ||
+		priced.Pricing.Rows[len(priced.Pricing.Rows)-1].Key != "total" {
+		t.Errorf("receipt order = %+v", priced.Pricing.Rows)
+	}
+	for _, row := range priced.Pricing.Rows {
+		if row.Label == "" || row.Amount.Display == "" {
+			t.Errorf("row %q is not fully composed: %+v", row.Key, row)
+		}
 	}
 }

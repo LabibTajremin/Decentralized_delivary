@@ -2600,6 +2600,67 @@ components:
         blocker_text:
           type: string
           description: The sentence to show, composed by the server.
+        pricing: { $ref: "#/components/schemas/CartPricing" }
+
+    ReceiptRow:
+      type: object
+      description: |
+        One line of the receipt, composed by the server. `key` is what the row
+        is, so a client can style it without parsing the label, and `label` is
+        the words to show — Bengali unless `lang=en`.
+      required: [key, label, amount]
+      properties:
+        key:
+          type: string
+          enum: [subtotal, delivery, expansion_surcharge, free_delivery, total]
+        label: { type: string, example: "ডেলিভারি চার্জ" }
+        amount: { $ref: "#/components/schemas/Money" }
+
+    CartPricing:
+      type: object
+      description: |
+        ALG-05 applied to this cart. Absent when there is nothing true to quote
+        — no delivery address chosen, or an address this shop cannot deliver to
+        — because a delivery charge for a journey that cannot happen is a number
+        the customer would reasonably take for a promise.
+      required: [delivery, delivery_before_waiver, expansion_surcharge, free_delivery, total, distance_m, expanded, rows]
+      properties:
+        delivery:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: What the customer pays, after any waiver.
+        delivery_before_waiver:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: What it would have cost. Equal to `delivery` unless free delivery applied.
+        expansion_surcharge:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: The part of the fee that exists only because the radius was widened (D2).
+        free_delivery: { type: boolean }
+        free_delivery_at:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: |
+            The order value that earns the waiver, or zero when the promotion is
+            off here. Free delivery applies only at the base radius: letting it
+            survive an expansion would give a free ride across the division and
+            break D2.
+        away_from_free_delivery:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: |
+            How much more would earn it, so a client can say "৳120 more for free
+            delivery" without holding the threshold itself (2.9).
+        total: { $ref: "#/components/schemas/Money" }
+        distance_m: { type: number, format: double }
+        expanded: { type: boolean }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/ReceiptRow" }
+        notice:
+          type: string
+          description: The one line under the total, or absent when there is nothing to say.
 
     CartAddRequest:
       type: object
@@ -2636,6 +2697,12 @@ components:
           description: |
             Whether an expansion surcharge was applied, so the app can say why
             the fee is higher instead of leaving the customer to guess (D2).
+        surcharge_minor:
+          type: integer
+          format: int64
+          description: |
+            How much of the fee exists only because the customer widened the
+            radius. Absent at the base radius.
 
     DiscoveryExpansion:
       type: object

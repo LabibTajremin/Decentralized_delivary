@@ -26,40 +26,53 @@ type revalidator struct {
 // Three calls regardless of how many lines there are: one merchant read, one
 // batched item read, and one reachability check. Combos are the exception —
 // they have no batch form, and a cart rarely holds more than one or two.
-func (r revalidator) Execute(ctx context.Context, cart domain.Cart) (domain.Check, merchant.Merchant, error) {
+func (r revalidator) Execute(ctx context.Context, cart domain.Cart) (revalidated, error) {
 	shop, err := r.merchant.Merchant(ctx, cart.MerchantID)
 	if err != nil {
-		return domain.Check{}, merchant.Merchant{}, err
+		return revalidated{}, err
 	}
 
 	reach, err := r.reachOf(ctx, cart)
 	if err != nil {
-		return domain.Check{}, merchant.Merchant{}, err
+		return revalidated{}, err
 	}
 
 	lines, err := r.checkLines(ctx, cart)
 	if err != nil {
-		return domain.Check{}, merchant.Merchant{}, err
+		return revalidated{}, err
 	}
 
-	return domain.Decide(cart,
-		domain.Shop{Listed: shop.IsListed, Open: shop.IsOpenNow},
-		reach, lines), shop, nil
+	return revalidated{
+		shop:  shop,
+		reach: reach,
+		check: domain.Decide(cart,
+			domain.Shop{Listed: shop.IsListed, Open: shop.IsOpenNow},
+			domain.Reach{Reachable: reach.Reachable, Reason: reach.Reason}, lines),
+	}, nil
+}
+
+// revalidated is one pass over a cart: the shop, what discovery said about the
+// address, and the verdict.
+//
+// The raw reach is kept alongside the verdict because pricing needs two things
+// from it that the verdict deliberately throws away — the distance and the
+// expansion level. Re-asking for them would be a second geo call for an answer
+// this pass already had.
+type revalidated struct {
+	shop  merchant.Merchant
+	reach discovery.Reach
+	check domain.Check
 }
 
 // reachOf asks discovery whether this address can still order from this shop.
 //
 // Skipped entirely when there is no address: there is nothing to ask about, and
 // Decide already reports the missing address as the blocker.
-func (r revalidator) reachOf(ctx context.Context, cart domain.Cart) (domain.Reach, error) {
+func (r revalidator) reachOf(ctx context.Context, cart domain.Cart) (discovery.Reach, error) {
 	if !cart.HasAddress() {
-		return domain.Reach{}, nil
+		return discovery.Reach{}, nil
 	}
-	reach, err := r.discovery.Reach(ctx, discovery.Point{Lat: cart.Lat, Lng: cart.Lng}, cart.MerchantID)
-	if err != nil {
-		return domain.Reach{}, err
-	}
-	return domain.Reach{Reachable: reach.Reachable, Reason: reach.Reason}, nil
+	return r.discovery.Reach(ctx, discovery.Point{Lat: cart.Lat, Lng: cart.Lng}, cart.MerchantID)
 }
 
 // checkLines compares every line against what the shop sells now.

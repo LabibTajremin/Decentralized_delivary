@@ -76,3 +76,11 @@ Every module exposes exactly one public contract interface. This is the only sur
 > an order the shop disputes. It also carries `Clear`, so order asks the cart to
 > empty itself instead of deleting rows it does not own. See
 > docs/technical/cart.md.
+
+> **P10 note.** `PricingContract` returns a *resolved tariff* rather than
+> answering one price at a time, the same shape as `ConfigContract.Settings` and
+> for the same reason: a search prices twenty shop cards, and a per-card contract
+> would mean twenty configuration reads that could quote two shops against two
+> different settings. `DiscoveryContract.Reach` also gained the resolved
+> placement in this phase — discovery had already worked it out to answer at all,
+> and the cart needed it to price. See docs/technical/pricing.md.

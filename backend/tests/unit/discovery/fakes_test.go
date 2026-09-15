@@ -10,7 +10,6 @@ import (
 	"errors"
 
 	cfgcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/config/contract"
-	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/geo"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/merchant"
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
@@ -150,27 +149,10 @@ func (f *fakeConfig) Settings(_ context.Context, p cfgcontract.Placement) (cfgco
 	return f.settings, nil
 }
 
-// fakeQuoter stands in for the delivery fee.
-type fakeQuoter struct {
-	err error
-	// requests records what it was asked, so a test can assert that an expanded
-	// search quoted at the expanded level (D2).
-	requests []ports.DeliveryQuoteRequest
-}
-
-func (f *fakeQuoter) QuoteDelivery(_ context.Context, _ ports.Placement, req ports.DeliveryQuoteRequest) (ports.DeliveryQuote, error) {
-	f.requests = append(f.requests, req)
-	if f.err != nil {
-		return ports.DeliveryQuote{}, f.err
-	}
-	minor := int64(4000) + int64(req.DistanceM/1000)*1000
-	if req.ExpansionLevel > 0 {
-		minor = minor * 3 / 2
-	}
-	return ports.DeliveryQuote{
-		Minor: minor, Currency: "BDT", Display: "fee", Expanded: req.ExpansionLevel > 0,
-	}, nil
-}
+// The delivery fee is not faked. Discovery's tests drive the real pricing
+// service over the same fake configuration, because the thing most worth
+// asserting is that the fee on a shop card is the fee ALG-05 produces — a
+// stubbed quoter would agree with itself and with nothing else.
 
 // defaultSettings is Appendix B's table: 5 km base, 5 km steps, four of them,
 // five merchants as the threshold, no auto-expand, ceiling on.
@@ -183,6 +165,7 @@ func defaultSettings() fakeSettings {
 			cfgcontract.DiscoveryMinMerchants:  5,
 			cfgcontract.PricingDeliveryBase:    4000,
 			cfgcontract.PricingDeliveryPerKm:   1000,
+			cfgcontract.PricingFreeDelivery:    50000,
 		},
 		bools: map[string]bool{
 			cfgcontract.DiscoveryAutoExpand:   false,

@@ -9,10 +9,10 @@ package application
 import (
 	"errors"
 
-	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/domain"
 	cfg "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/config"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/geo"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/pricing"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
 
@@ -85,10 +85,9 @@ func policyError(err error) error {
 		"Search is unavailable in this area. Please try again later.")
 }
 
-// placementOf restates a resolved area as the primitive config and the fee
-// quoter both take.
-func placementOf(a geo.Area) ports.Placement {
-	return ports.Placement{
+// placementOf restates a resolved area as the primitive pricing takes.
+func placementOf(a geo.Area) pricing.Placement {
+	return pricing.Placement{
 		AreaCode:     a.AreaCode,
 		DistrictCode: a.DistrictCode,
 		DivisionCode: a.DivisionCode,

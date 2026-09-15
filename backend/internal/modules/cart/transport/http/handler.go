@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/application"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/pricing"
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/httpx"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
@@ -98,19 +99,43 @@ type lineBody struct {
 	Orderable bool         `json:"orderable"`
 }
 
+// receiptRow is one line of the priced receipt, composed by the server.
+type receiptRow struct {
+	Key    string    `json:"key"`
+	Label  string    `json:"label"`
+	Amount moneyBody `json:"amount"`
+}
+
+// pricingBody is the delivery and the total. Absent when there is nothing true
+// to quote — no address yet, or an address this shop cannot deliver to.
+type pricingBody struct {
+	Delivery             moneyBody    `json:"delivery"`
+	DeliveryBeforeWaiver moneyBody    `json:"delivery_before_waiver"`
+	ExpansionSurcharge   moneyBody    `json:"expansion_surcharge"`
+	FreeDelivery         bool         `json:"free_delivery"`
+	FreeDeliveryAt       moneyBody    `json:"free_delivery_at"`
+	AwayFromFreeDelivery moneyBody    `json:"away_from_free_delivery"`
+	Total                moneyBody    `json:"total"`
+	DistanceM            float64      `json:"distance_m"`
+	Expanded             bool         `json:"expanded"`
+	Rows                 []receiptRow `json:"rows"`
+	Notice               string       `json:"notice,omitempty"`
+}
+
 type cartBody struct {
-	ID              string     `json:"id"`
-	MerchantID      string     `json:"merchant_id"`
-	MerchantName    string     `json:"merchant_name"`
-	MerchantLogoURL string     `json:"merchant_logo_url,omitempty"`
-	MerchantStatus  string     `json:"merchant_status,omitempty"`
-	AddressID       string     `json:"address_id,omitempty"`
-	Lines           []lineBody `json:"lines"`
-	Count           int        `json:"count"`
-	Subtotal        moneyBody  `json:"subtotal"`
-	Orderable       bool       `json:"orderable"`
-	Blocker         string     `json:"blocker,omitempty"`
-	BlockerText     string     `json:"blocker_text,omitempty"`
+	ID              string       `json:"id"`
+	MerchantID      string       `json:"merchant_id"`
+	MerchantName    string       `json:"merchant_name"`
+	MerchantLogoURL string       `json:"merchant_logo_url,omitempty"`
+	MerchantStatus  string       `json:"merchant_status,omitempty"`
+	AddressID       string       `json:"address_id,omitempty"`
+	Lines           []lineBody   `json:"lines"`
+	Count           int          `json:"count"`
+	Subtotal        moneyBody    `json:"subtotal"`
+	Orderable       bool         `json:"orderable"`
+	Blocker         string       `json:"blocker,omitempty"`
+	BlockerText     string       `json:"blocker_text,omitempty"`
+	Pricing         *pricingBody `json:"pricing,omitempty"`
 }
 
 type addRequest struct {
@@ -299,7 +324,38 @@ func toBody(view application.View) cartBody {
 		MerchantStatus: view.MerchantStatus, AddressID: view.AddressID,
 		Lines: lines, Count: view.Count, Subtotal: toMoneyBody(view.Subtotal),
 		Orderable: view.Orderable, Blocker: view.Blocker, BlockerText: view.BlockerText,
+		Pricing: toPricingBody(view.Pricing),
 	}
+}
+
+func toPricingBody(quote *pricing.Quote) *pricingBody {
+	if quote == nil {
+		return nil
+	}
+	rows := make([]receiptRow, 0, len(quote.Rows))
+	for _, row := range quote.Rows {
+		rows = append(rows, receiptRow{
+			Key: row.Key, Label: row.Label,
+			Amount: moneyBody{Minor: row.Amount.Minor, Currency: row.Amount.Currency, Display: row.Amount.Display},
+		})
+	}
+	return &pricingBody{
+		Delivery:             fromContractMoney(quote.Delivery),
+		DeliveryBeforeWaiver: fromContractMoney(quote.DeliveryBeforeWaiver),
+		ExpansionSurcharge:   fromContractMoney(quote.ExpansionSurcharge),
+		FreeDelivery:         quote.FreeDelivery,
+		FreeDeliveryAt:       fromContractMoney(quote.FreeDeliveryAt),
+		AwayFromFreeDelivery: fromContractMoney(quote.AwayFromFreeDelivery),
+		Total:                fromContractMoney(quote.Total),
+		DistanceM:            quote.DistanceM,
+		Expanded:             quote.Expanded,
+		Rows:                 rows,
+		Notice:               quote.Notice,
+	}
+}
+
+func fromContractMoney(m pricing.Money) moneyBody {
+	return moneyBody{Minor: m.Minor, Currency: m.Currency, Display: m.Display}
 }
 
 func toMoneyBody(m application.Money) moneyBody {

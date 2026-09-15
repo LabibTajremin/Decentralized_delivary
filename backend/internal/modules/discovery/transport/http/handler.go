@@ -77,6 +77,10 @@ type deliveryFee struct {
 	Currency string `json:"currency"`
 	Display  string `json:"display"`
 	Expanded bool   `json:"expanded"`
+	// Surcharge is how much of the fee exists only because the customer
+	// widened the radius (D2), so the app can say what that cost rather than
+	// just showing a bigger number.
+	Surcharge int64 `json:"surcharge_minor,omitempty"`
 }
 
 // expansionBody is the whole expansion decision, already made.
@@ -201,10 +205,11 @@ func toSearchBody(result application.Result) searchBody {
 			DistanceM: m.DistanceM, Distance: m.Distance,
 			IsOpenNow: m.IsOpenNow, OpenStatus: m.OpenStatus,
 			Delivery: deliveryFee{
-				Minor:    m.Delivery.Minor,
-				Currency: m.Delivery.Currency,
-				Display:  m.Delivery.Display,
-				Expanded: m.Delivery.Expanded,
+				Minor:     m.Delivery.Amount.Minor,
+				Currency:  m.Delivery.Amount.Currency,
+				Display:   m.Delivery.Amount.Display,
+				Expanded:  m.Delivery.Expanded,
+				Surcharge: m.Delivery.Surcharge.Minor,
 			},
 		})
 	}

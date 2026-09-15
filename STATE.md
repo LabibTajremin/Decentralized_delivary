@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-15T00:00:00Z
-current_phase: P10
-current_task: P10.T01
+current_phase: P11
+current_task: P11.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -18,7 +18,8 @@ P06 DONE       merchant — nationwide registration (D1), documents, approval wo
 P07 DONE       catalogue — per-type schema differences, variants, add-ons, combos, stock, availability, bulk update
 P08 DONE       discovery — local visibility (D1), stepwise expansion with a cost (D2), the division ceiling (D3), ranking
 P09 DONE       cart — single merchant, revalidation against live prices and hours, invalidation on address change (D3)
-P10..P20 TODO
+P10 DONE       pricing — ALG-05 banding exact at the edges, the D2 surcharge, free delivery; one implementation for card and receipt
+P11..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -92,11 +93,11 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P10 — Pricing. ALG-05 exactly: piecewise-linear banding by distance, the D2
-expansion multiplier, and the free-delivery threshold. It takes over the
-provisional quoter discovery has been using since P08 (delete
-discovery/infrastructure/fees, add discovery/external/pricing) and gives the
-cart its delivery line. Depends on P03 and P08.
+P11 — Order. Placement from a cart, the order state machine, the free
+cancellation window (order.cancellation_window) and the COD limit
+(order.cod_limit). It re-quotes authoritatively on the way in rather than
+trusting the price the customer was shown, and clears the cart through
+CartContract once the order exists. Depends on P09, P10 and P05.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -210,3 +211,14 @@ P09.T07 DONE  /v1/cart transport, caller-scoped; OpenAPI paths and schemas
 P09.T08 DONE  API-wide snake_case fix: P08 and P09 had shipped camelCase keys
 P09.T09 DONE  unit, integration and E2E tests at 100%
 P09.T10 DONE  docs/technical/cart.md
+
+## P10 tasks
+P10.T01 DONE  domain — Tariff, ALG-05 banding, the D2 multiplier, free delivery only at the base radius
+P10.T02 DONE  domain — Quote as a receipt: ordered rows, a derived surcharge, away-from-free
+P10.T03 DONE  PricingContract with a resolved Tariff snapshot, so a page of cards costs one config read
+P10.T04 DONE  application service — six settings in, Bengali-first receipt rows and notices out
+P10.T05 DONE  discovery switched from its provisional quoter (infrastructure/fees deleted) to external/pricing
+P10.T06 DONE  DiscoveryContract.Reach now carries the resolved placement, so the cart prices without a second geo call
+P10.T07 DONE  cart gained its receipt: external/pricing, a pricing block on the view, wire and contract
+P10.T08 DONE  unit tests at 100%, E2E proving the shop-card fee and the receipt fee are the same number
+P10.T09 DONE  docs/technical/pricing.md

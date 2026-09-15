@@ -48,6 +48,9 @@ func (uc *ReachUseCase) Execute(ctx context.Context, from geo.Point, merchantID,
 
 	reach := contract.Reach{
 		MerchantID:   merchantID,
+		AreaCode:     placement.AreaCode,
+		DistrictCode: placement.DistrictCode,
+		DivisionCode: placement.DivisionCode,
 		DistanceM:    distance,
 		DistanceText: domain.FormatDistance(distance, lang),
 	}

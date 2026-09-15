@@ -12,6 +12,7 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/geo"
 	discohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/transport/http"
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
+	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
 )
 
 // server assembles the handler over fakes and returns it with the fakes.
@@ -20,11 +21,10 @@ func server(t *testing.T, settings cfgcontract.Settings) (*http.ServeMux, *fakeG
 	g := &fakeGeo{area: dhaka()}
 	m := &fakeMerchant{one: shop("m1", "Star Kabab", merchantcontract.TypeRestaurant, true)}
 	c := &fakeConfig{settings: settings}
-	q := &fakeQuoter{}
 
 	mux := http.NewServeMux()
 	discohttp.NewHandler(
-		application.NewSearchUseCase(g, m, c, q),
+		application.NewSearchUseCase(g, m, c, pricingapp.NewService(c)),
 		application.NewReachUseCase(g, m, c),
 	).Register(mux)
 	return mux, g, m

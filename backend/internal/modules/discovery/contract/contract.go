@@ -19,6 +19,13 @@ type Point struct {
 // Reach is whether one merchant is visible from one point, and at what cost.
 type Reach struct {
 	MerchantID string
+	// AreaCode, DistrictCode and DivisionCode are where the *customer* is, as
+	// discovery had to resolve it to answer at all. Carried so a caller that
+	// needs the placement — to price the delivery, say — does not make a second
+	// geo call for an answer this one already has.
+	AreaCode     string
+	DistrictCode string
+	DivisionCode string
 	// DistanceM is the straight-line distance in metres.
 	DistanceM float64
 	// DistanceText is the distance as the customer should read it, composed by

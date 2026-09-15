@@ -43,6 +43,23 @@ type Line struct {
 	LineTotal Money
 }
 
+// Delivery is what the cart was quoted, restated in this module's own
+// primitives.
+//
+// Restated rather than pricing's own type: a contract package may not import
+// another module's contract (2.5), and the restatement is the price of that
+// rule. Order re-quotes anyway before it writes an order — a price a customer
+// was shown is not a price the system promised until the server says so on the
+// way in.
+type Delivery struct {
+	Fee                Money
+	ExpansionSurcharge Money
+	Total              Money
+	FreeDelivery       bool
+	Expanded           bool
+	DistanceM          float64
+}
+
 // Cart is a whole cart as order receives it.
 type Cart struct {
 	ID         string
@@ -55,6 +72,10 @@ type Cart struct {
 	// Subtotal is what the goods cost. Delivery and the grand total are
 	// pricing's, not the cart's.
 	Subtotal Money
+	// Delivery is the quote the customer was shown, or nil when there was
+	// nothing true to quote — no address, or an address this shop cannot
+	// deliver to.
+	Delivery *Delivery
 	// Orderable is whether checkout may proceed, and Blocker says why not.
 	// Order re-checks rather than trusting a client that claims it may: an
 	// endpoint that took "this cart is fine" from the caller is an endpoint

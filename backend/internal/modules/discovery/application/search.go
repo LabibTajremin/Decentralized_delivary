@@ -3,11 +3,11 @@ package application
 import (
 	"context"
 
-	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/domain"
 	cfg "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/config"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/geo"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/merchant"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/pricing"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
 
@@ -17,12 +17,12 @@ type SearchUseCase struct {
 	geo      geo.Service
 	merchant merchant.Service
 	config   cfg.Service
-	quoter   ports.DeliveryQuoter
+	pricing  pricing.Service
 }
 
 // NewSearchUseCase wires the use case.
-func NewSearchUseCase(g geo.Service, m merchant.Service, c cfg.Service, q ports.DeliveryQuoter) *SearchUseCase {
-	return &SearchUseCase{geo: g, merchant: m, config: c, quoter: q}
+func NewSearchUseCase(g geo.Service, m merchant.Service, c cfg.Service, p pricing.Service) *SearchUseCase {
+	return &SearchUseCase{geo: g, merchant: m, config: c, pricing: p}
 }
 
 // Query is one customer's search.
@@ -67,7 +67,7 @@ type MerchantCard struct {
 	Distance   string
 	IsOpenNow  bool
 	OpenStatus string
-	Delivery   ports.DeliveryQuote
+	Delivery   pricing.Fee
 }
 
 // Result is a whole search: where we decided the customer is, what we found,
@@ -199,6 +199,13 @@ func (uc *SearchUseCase) cards(
 		return nil, err
 	}
 
+	// One tariff for the whole page. Resolved here rather than per card so a
+	// search cannot quote two shops against two different configurations.
+	tariff, err := uc.pricing.Tariff(ctx, placementOf(placement))
+	if err != nil {
+		return nil, err
+	}
+
 	shops := make(map[string]merchant.Merchant, len(listed))
 	candidates := make([]domain.Candidate, 0, len(listed))
 	for _, m := range listed {
@@ -223,9 +230,10 @@ func (uc *SearchUseCase) cards(
 	out := make([]MerchantCard, 0, len(candidates))
 	for _, c := range candidates {
 		m := shops[c.ID]
-		quote, quoteErr := uc.quoter.QuoteDelivery(ctx, placementOf(placement), ports.DeliveryQuoteRequest{
+		quote, quoteErr := tariff.DeliveryFee(pricing.QuoteRequest{
 			DistanceM:      c.DistanceM,
 			ExpansionLevel: level,
+			Lang:           q.Lang,
 		})
 		if quoteErr != nil {
 			return nil, quoteErr

@@ -9,6 +9,7 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/domain"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/external/geo"
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
+	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
 
@@ -28,7 +29,7 @@ type rig struct {
 	geo      *fakeGeo
 	merchant *fakeMerchant
 	config   *fakeConfig
-	quoter   *fakeQuoter
+	pricing  *fakeConfig
 	search   *application.SearchUseCase
 }
 
@@ -36,9 +37,11 @@ func newRig(settings cfgcontract.Settings) *rig {
 	g := &fakeGeo{area: dhaka()}
 	m := &fakeMerchant{}
 	c := &fakeConfig{settings: settings}
-	q := &fakeQuoter{}
-	return &rig{geo: g, merchant: m, config: c, quoter: q,
-		search: application.NewSearchUseCase(g, m, c, q)}
+	// The real pricing service, over its own view of the same settings, so a
+	// test can break pricing's configuration without breaking discovery's.
+	prices := &fakeConfig{settings: settings}
+	return &rig{geo: g, merchant: m, config: c, pricing: prices,
+		search: application.NewSearchUseCase(g, m, c, pricingapp.NewService(prices))}
 }
 
 func defaultRig() *rig { return newRig(defaultSettings()) }
@@ -70,7 +73,7 @@ func TestSearchReturnsWhatIsNearby(t *testing.T) {
 	if got.Merchants[0].Distance != "400 m" {
 		t.Errorf("distance = %q, want a composed string", got.Merchants[0].Distance)
 	}
-	if got.Merchants[0].Delivery.Display == "" || got.Merchants[0].Delivery.Expanded {
+	if got.Merchants[0].Delivery.Amount.Display == "" || got.Merchants[0].Delivery.Expanded {
 		t.Errorf("base-radius fee is wrong: %+v", got.Merchants[0].Delivery)
 	}
 	if got.Expansion.Stage != domain.StageBase || got.RadiusText != "5 km" {
@@ -141,18 +144,24 @@ func TestExpandingRaisesTheDeliveryFee(t *testing.T) {
 
 	baseFee := atBase.Merchants[0].Delivery
 	wideFee := atLevel2.Merchants[0].Delivery
-	if wideFee.Minor <= baseFee.Minor {
-		t.Fatalf("expanding did not raise the fee: %d then %d", baseFee.Minor, wideFee.Minor)
+	if wideFee.Amount.Minor <= baseFee.Amount.Minor {
+		t.Fatalf("expanding did not raise the fee: %d then %d", baseFee.Amount.Minor, wideFee.Amount.Minor)
 	}
 	if !wideFee.Expanded || baseFee.Expanded {
 		t.Errorf("the surcharge was not flagged: base %+v, expanded %+v", baseFee, wideFee)
 	}
+	// The surcharge is exactly the difference, so the app can show what the
+	// customer's choice to widen actually cost.
+	if wideFee.Surcharge.Minor != wideFee.Amount.Minor-baseFee.Amount.Minor {
+		t.Errorf("surcharge = %d, want %d", wideFee.Surcharge.Minor,
+			wideFee.Amount.Minor-baseFee.Amount.Minor)
+	}
 	if atLevel2.Expansion.RadiusM != 15000 {
 		t.Errorf("level 2 searched %v m, want 15000", atLevel2.Expansion.RadiusM)
 	}
-	// The quoter was told the level, not left to infer it from the distance.
-	if got := wide.quoter.requests[0].ExpansionLevel; got != 2 {
-		t.Errorf("the quoter was asked at level %d, want 2", got)
+	// One tariff resolved for the whole page, not one per shop card.
+	if len(wide.pricing.seen) != 1 {
+		t.Errorf("pricing was asked %d times for one page", len(wide.pricing.seen))
 	}
 }
 
@@ -525,11 +534,25 @@ func TestSearchFailures(t *testing.T) {
 		r := defaultRig()
 		r.geo.nearby = []geo.NearbyMerchant{{MerchantID: "m1", DistanceM: 100}}
 		r.merchant.listed = []merchantcontract.Merchant{shop("m1", "Star", merchantcontract.TypeRestaurant, true)}
-		r.quoter.err = errBoom
+		r.pricing.err = errBoom
 		// A shop card with no fee is a shop the customer cannot decide about.
 		// Failing the whole search is the honest answer.
 		if _, err := r.search.Execute(context.Background(), application.Query{Point: dhanmondi}); err == nil {
 			t.Fatal("a shop was shown with no delivery fee")
 		}
 	})
+}
+
+// A distance that cannot be priced. Unreachable while geo is the only source of
+// distances, but discovery takes the number on trust from another module, and a
+// shop card showing a fee worked out from nonsense would be worse than a search
+// that refused.
+func TestANonsensicalDistanceFailsTheSearch(t *testing.T) {
+	r := defaultRig()
+	r.geo.nearby = []geo.NearbyMerchant{{MerchantID: "m1", DistanceM: -1}}
+	r.merchant.listed = []merchantcontract.Merchant{shop("m1", "Star", merchantcontract.TypeRestaurant, true)}
+
+	if _, err := r.search.Execute(context.Background(), application.Query{Point: dhanmondi}); err == nil {
+		t.Fatal("a shop card was priced over a negative distance")
+	}
 }

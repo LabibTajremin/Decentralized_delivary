@@ -9,6 +9,7 @@ import (
 	catcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/contract"
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
+	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
@@ -19,6 +20,7 @@ type rig struct {
 	catalogue *fakeCatalogue
 	merchant  *fakeMerchant
 	discovery *fakeDiscovery
+	pricing   *fakeConfig
 	carts     *application.CartUseCase
 	service   *application.Service
 }
@@ -27,9 +29,14 @@ func newRig() *rig {
 	repo := newRepo()
 	cat := newCatalogue()
 	shop := &fakeMerchant{shop: openShop()}
-	disco := &fakeDiscovery{reach: contract.Reach{Reachable: true}}
-	uc := application.NewCartUseCase(repo, cat, shop, disco, &clock.Fixed{}, &fakeIDs{})
-	return &rig{repo: repo, catalogue: cat, merchant: shop, discovery: disco,
+	disco := &fakeDiscovery{reach: contract.Reach{Reachable: true, DivisionCode: "DHA"}}
+	// The real pricing service over a fake config, not a stubbed quoter. The
+	// thing most worth asserting is that the cart's total is the one ALG-05
+	// produces — a stub would agree with itself and with nothing else.
+	prices := &fakeConfig{settings: appendixB()}
+	uc := application.NewCartUseCase(repo, cat, shop, disco,
+		pricingapp.NewService(prices), &clock.Fixed{}, &fakeIDs{})
+	return &rig{repo: repo, catalogue: cat, merchant: shop, discovery: disco, pricing: prices,
 		carts: uc, service: application.NewService(uc)}
 }
 

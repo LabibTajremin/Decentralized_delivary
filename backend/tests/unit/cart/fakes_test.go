@@ -8,6 +8,7 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/domain"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/discovery"
 	catcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/contract"
+	cfgcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/config/contract"
 	discocontract "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/contract"
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
@@ -194,3 +195,62 @@ func pizza() catcontract.Item {
 
 // codeOf is errs.CodeOf, named here so the sentence tests read as one idea.
 func codeOf(err error) string { return errs.CodeOf(err) }
+
+// fakeSettings and fakeConfig stand in for the config module, which the cart
+// reaches only through pricing.
+type fakeSettings struct {
+	ints   map[string]int64
+	ratios map[string]float64
+	failOn string
+}
+
+func (s fakeSettings) Int(key string) (int64, error) {
+	if key == s.failOn {
+		return 0, errBoom
+	}
+	v, ok := s.ints[key]
+	if !ok {
+		return 0, errBoom
+	}
+	return v, nil
+}
+
+func (s fakeSettings) Bool(string) (bool, error) { return false, errBoom }
+
+func (s fakeSettings) Ratio(key string) (float64, error) {
+	if key == s.failOn {
+		return 0, errBoom
+	}
+	v, ok := s.ratios[key]
+	if !ok {
+		return 0, errBoom
+	}
+	return v, nil
+}
+
+type fakeConfig struct {
+	settings cfgcontract.Settings
+	err      error
+	seen     []cfgcontract.Placement
+}
+
+func (f *fakeConfig) Settings(_ context.Context, p cfgcontract.Placement) (cfgcontract.Settings, error) {
+	f.seen = append(f.seen, p)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.settings, nil
+}
+
+// appendixB is the default tariff: ৳40 base, ৳10 a kilometre, 1.5× when the
+// radius was widened, free delivery above ৳500.
+func appendixB() fakeSettings {
+	return fakeSettings{
+		ints: map[string]int64{
+			cfgcontract.PricingDeliveryBase:  4000,
+			cfgcontract.PricingDeliveryPerKm: 1000,
+			cfgcontract.PricingFreeDelivery:  50000,
+		},
+		ratios: map[string]float64{cfgcontract.PricingExpansionMult: 1.5},
+	}
+}

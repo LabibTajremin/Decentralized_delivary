@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/contract"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/pricing"
 )
 
 // Service implements contract.CartContract.
@@ -55,6 +56,7 @@ func toContract(userID string, view View) contract.Cart {
 	}
 	return contract.Cart{
 		ID: view.ID, UserID: userID, MerchantID: view.MerchantID,
+		Delivery:  toContractDelivery(view.Pricing),
 		AddressID: view.AddressID,
 		Lat:       view.Lat,
 		Lng:       view.Lng,
@@ -62,6 +64,25 @@ func toContract(userID string, view View) contract.Cart {
 		Subtotal:  toContractMoney(view.Subtotal),
 		Orderable: view.Orderable, Blocker: view.Blocker,
 	}
+}
+
+// toContractDelivery restates the quote in the cart's own primitives.
+func toContractDelivery(quote *pricing.Quote) *contract.Delivery {
+	if quote == nil {
+		return nil
+	}
+	return &contract.Delivery{
+		Fee:                fromPricingMoney(quote.Delivery),
+		ExpansionSurcharge: fromPricingMoney(quote.ExpansionSurcharge),
+		Total:              fromPricingMoney(quote.Total),
+		FreeDelivery:       quote.FreeDelivery,
+		Expanded:           quote.Expanded,
+		DistanceM:          quote.DistanceM,
+	}
+}
+
+func fromPricingMoney(m pricing.Money) contract.Money {
+	return contract.Money{Minor: m.Minor, Currency: m.Currency, Display: m.Display}
 }
 
 func toContractMoney(m Money) contract.Money {

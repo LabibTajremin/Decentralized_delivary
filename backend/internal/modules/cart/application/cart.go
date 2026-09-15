@@ -8,6 +8,7 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/catalogue"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/discovery"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/merchant"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/cart/external/pricing"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/id"
@@ -22,6 +23,7 @@ import (
 type CartUseCase struct {
 	repo        ports.Repository
 	catalogue   catalogue.Service
+	pricing     pricing.Service
 	revalidator revalidator
 	clock       clock.Clock
 	ids         id.Generator
@@ -33,12 +35,14 @@ func NewCartUseCase(
 	cat catalogue.Service,
 	merchants merchant.Service,
 	disco discovery.Service,
+	prices pricing.Service,
 	c clock.Clock,
 	ids id.Generator,
 ) *CartUseCase {
 	return &CartUseCase{
 		repo:      repo,
 		catalogue: cat,
+		pricing:   prices,
 		revalidator: revalidator{
 			catalogue: cat, merchant: merchants, discovery: disco,
 		},
@@ -205,11 +209,52 @@ func (uc *CartUseCase) saveAndRender(ctx context.Context, cart domain.Cart, lang
 	return uc.render(ctx, cart, lang)
 }
 
-// render revalidates a cart and composes the screen.
+// render revalidates a cart, prices it, and composes the screen.
 func (uc *CartUseCase) render(ctx context.Context, cart domain.Cart, lang string) (View, error) {
-	check, shop, err := uc.revalidator.Execute(ctx, cart)
+	got, err := uc.revalidator.Execute(ctx, cart)
 	if err != nil {
 		return View{}, err
 	}
-	return viewOf(cart, shop, check, lang), nil
+
+	view := viewOf(cart, got.shop, got.check, lang)
+
+	quote, priced, err := uc.price(ctx, got, view.Subtotal.Minor, lang)
+	if err != nil {
+		return View{}, err
+	}
+	if priced {
+		view.Pricing = &quote
+	}
+	return view, nil
+}
+
+// price quotes the delivery, when there is anything true to quote.
+//
+// Skipped when the address cannot reach the shop, and when there is no address
+// at all: a delivery charge for a journey that cannot happen is a number the
+// customer would reasonably take for a promise. The blocker already says why,
+// and a cart screen with no total under an "another division" message reads
+// correctly.
+func (uc *CartUseCase) price(ctx context.Context, got revalidated, subtotalMinor int64, lang string) (pricing.Quote, bool, error) {
+	if !got.reach.Reachable {
+		return pricing.Quote{}, false, nil
+	}
+	tariff, err := uc.pricing.Tariff(ctx, pricing.Placement{
+		AreaCode:     got.reach.AreaCode,
+		DistrictCode: got.reach.DistrictCode,
+		DivisionCode: got.reach.DivisionCode,
+	})
+	if err != nil {
+		return pricing.Quote{}, false, err
+	}
+	quote, err := tariff.Quote(pricing.QuoteRequest{
+		SubtotalMinor:  subtotalMinor,
+		DistanceM:      got.reach.DistanceM,
+		ExpansionLevel: got.reach.RequiredLevel,
+		Lang:           lang,
+	})
+	if err != nil {
+		return pricing.Quote{}, false, err
+	}
+	return quote, true, nil
 }
