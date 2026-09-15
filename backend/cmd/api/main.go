@@ -43,6 +43,10 @@ import (
 	merchantapp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/application"
 	merchantpg "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/infrastructure/persistence/postgres"
 	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
+	orderapp "github.com/rootlogic-lab/delivery/backend/internal/modules/order/application"
+	ordercodes "github.com/rootlogic-lab/delivery/backend/internal/modules/order/infrastructure/codes"
+	orderpg "github.com/rootlogic-lab/delivery/backend/internal/modules/order/infrastructure/persistence/postgres"
+	orderhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/order/transport/http"
 	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
 	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
 	userpg "github.com/rootlogic-lab/delivery/backend/internal/modules/user/infrastructure/persistence/postgres"
@@ -191,9 +195,12 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// data, so the user id comes from the verified token rather than the
 	// request.
 	userRepo := userpg.NewFromPool(pool)
+	userProfiles := userapp.NewProfileUseCase(userRepo)
+	userAddresses := userapp.NewAddressUseCase(userRepo, geoService, ids)
+	userService := userapp.NewService(userProfiles, userAddresses)
 	userhttp.NewHandler(
-		userapp.NewProfileUseCase(userRepo),
-		userapp.NewAddressUseCase(userRepo, geoService, ids),
+		userProfiles,
+		userAddresses,
 		userhttp.Guard(authenticator.Authenticated()),
 		func(r *http.Request) (string, bool) {
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
@@ -261,12 +268,41 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	cartUseCase := cartapp.NewCartUseCase(
 		cartRepo, catalogueService, merchantService, discoveryService, pricingService, systemClock, ids,
 	)
+	cartService := cartapp.NewService(cartUseCase)
 	carthttp.NewHandler(
 		cartUseCase,
 		carthttp.Guard(authenticator.Authenticated()),
 		func(r *http.Request) (string, bool) {
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
 			return principal.UserID, ok
+		},
+	).Register(mux)
+
+	// Order (P11). The lifecycle lives in one transition table, and every
+	// party — customer, shop, rider, admin — reaches it through the same use
+	// case, so "who may do this" cannot drift between four endpoints. Prices
+	// are re-quoted on the way in rather than taken from the cart: a price the
+	// customer was shown is not a price the system promised.
+	orderRepo := orderpg.NewFromPool(pool)
+	orderTransitions := orderapp.NewTransitionUseCase(
+		orderRepo, merchantService, configService, systemClock, ids,
+	)
+	orderhttp.NewHandler(
+		orderapp.NewPlaceUseCase(
+			orderRepo, ordercodes.New(), cartService, pricingService,
+			merchantService, userService, discoveryService, configService,
+			systemClock, ids,
+		),
+		orderTransitions,
+		orderapp.NewReadUseCase(orderRepo, configService, systemClock),
+		orderhttp.Guard(authenticator.Authenticated()),
+		orderhttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+		func(r *http.Request, userID string) ([]string, error) {
+			return merchantService.OwnedBy(r.Context(), userID)
 		},
 	).Register(mux)
 

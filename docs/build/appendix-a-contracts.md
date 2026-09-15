@@ -84,3 +84,15 @@ Every module exposes exactly one public contract interface. This is the only sur
 > different settings. `DiscoveryContract.Reach` also gained the resolved
 > placement in this phase — discovery had already worked it out to answer at all,
 > and the cart needed it to price. See docs/technical/pricing.md.
+
+> **P11 note.** `OrderContract` exposes named transitions (`MarkPaid`,
+> `MarkPaymentFailed`, `Advance`) rather than a general "set status". A contract
+> that let any consumer write any status would put the lifecycle back in the
+> hands of every module that imports it. `Advance` further restricts the actor
+> to partner, admin or system: a customer's cancellation is bound by a window
+> checked on their own path, and a shop's authority over an order is "this shop
+> is yours", which only the HTTP layer can establish.
+>
+> `MerchantContract` also gained `OwnedBy` in this phase, so the order module
+> can answer "is this shop yours" before showing a queue without reading the
+> merchant table. See docs/technical/order.md.

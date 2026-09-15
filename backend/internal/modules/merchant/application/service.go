@@ -36,6 +36,23 @@ func (s *Service) Merchant(ctx context.Context, merchantID string) (contract.Mer
 	return ToContract(merchant, s.clock.Now(), ""), nil
 }
 
+// OwnedBy returns the ids of the shops an account owns.
+//
+// An account with no shop is not an error: most accounts have none, and a
+// consumer asking "which shops are yours" about a customer should get an empty
+// answer rather than a failure it has to special-case.
+func (s *Service) OwnedBy(ctx context.Context, ownerUserID string) ([]string, error) {
+	merchant, err := s.repo.ByOwner(ctx, ownerUserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrMerchantNotFound) {
+			return nil, nil
+		}
+		return nil, errs.Wrap(err, errs.KindUnavailable, "merchant_unavailable",
+			"We could not check your shop just now. Please try again.")
+	}
+	return []string{merchant.ID}, nil
+}
+
 // Listed returns the subset of these ids a customer may see, in order.
 func (s *Service) Listed(ctx context.Context, merchantIDs []string) ([]contract.Merchant, error) {
 	now := s.clock.Now()

@@ -34,6 +34,11 @@ tags:
       on the caller's own data: the user id comes from the verified token, never
       from the request, because an endpoint that takes one from the client is an
       endpoint that will be asked for somebody else's home address.
+  - name: orders
+    description: |
+      The agreement between a customer and a shop: placed from a cart, moved
+      through one transition table by whichever party owns the next step, and
+      frozen at the prices the server worked out on the way in.
   - name: cart
     description: |
       The caller's own cart: one customer, one shop, one delivery address. Every
@@ -2511,6 +2516,432 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/orders:
+    post:
+      tags: [orders]
+      summary: Place an order from the caller's cart
+      description: |
+        The request carries an address id, a way to pay, and nothing else.
+        What the goods cost, how far it is, whether the shop is open and
+        whether cash is allowed at this amount are all read by the server at
+        the moment it writes the order — a price the customer was shown is not
+        a price the system promised (2.9).
+
+        **Idempotency.** Send `Idempotency-Key` (or `idempotency_key` in the
+        body). A second request with the same key returns the first order
+        rather than making another one, which is what a customer on a village
+        2G connection tapping "Place order" twice actually needs.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address_id, payment_method]
+              properties:
+                address_id: { type: string }
+                payment_method:
+                  type: string
+                  enum: [cash, online]
+                  description: |
+                    `cash` places the order outright. `online` starts it at
+                    `pending_payment` — a shop that started cooking on an unpaid
+                    order would be carrying the platform's risk.
+                idempotency_key: { type: string }
+      responses:
+        "201":
+          description: The order, placed — or the one an earlier identical request created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400":
+          description: The request, the address or the payment method is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such address
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: |
+            The cart cannot be ordered, the shop is not taking orders, the
+            address is not deliverable from this shop (D3), or a cash order
+            exceeds the area's COD limit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The order could not be written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      tags: [orders]
+      summary: The caller's own orders, newest first
+      parameters:
+        - { name: live, in: query, required: false, description: "`true` for the current-orders tab.", schema: { type: string, enum: ["true"] } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderList" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The orders could not be read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/orders/{orderId}:
+    get:
+      tags: [orders]
+      summary: One of the caller's own orders
+      description: |
+        An order that is not the caller's answers `404`, not `403`. Saying "that
+        order exists but is not yours" would let anybody with a list of ids find
+        out which ones are real.
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such order of the caller's
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/orders/{orderId}/cancellation:
+    get:
+      tags: [orders]
+      summary: Whether the order can still be cancelled, and for how long
+      description: |
+        Its own endpoint because a countdown needs refreshing and a client must
+        not learn the answer by trying it. `seconds_left` comes from the
+        server's clock, which is the one that decides.
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The cancellation decision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderCancellation" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such order of the caller's
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/orders/{orderId}/cancel:
+    post:
+      tags: [orders]
+      summary: Cancel an order within the free window
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: The cancelled order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such order of the caller's
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: |
+            The window has closed, the shop has started preparing, or the order
+            has already finished. `error.details.reason` says which.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/orders:
+    get:
+      tags: [orders]
+      summary: A shop's order queue
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: live, in: query, required: false, schema: { type: string, enum: ["true"] } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of the shop's orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderList" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not a shop the caller owns
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/orders/{orderId}:
+    get:
+      tags: [orders]
+      summary: One order from a shop's queue
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not a shop the caller owns, or no such order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/orders/{orderId}/accept:
+    post:
+      tags: [orders]
+      summary: The shop accepts an order
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The order, accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not a shop the caller owns, or no such order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The order cannot move that way from where it is
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/orders/{orderId}/reject:
+    post:
+      tags: [orders]
+      summary: The shop cannot take an order
+      description: A reason is required — it is the only thing the customer will have to go on.
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: The order, rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400":
+          description: No reason was given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not a shop the caller owns, or no such order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The order cannot move that way from where it is
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/orders/{orderId}/preparing:
+    post:
+      tags: [orders]
+      summary: The shop has started preparing
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not a shop the caller owns, or no such order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The order cannot move that way from where it is
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/merchants/{merchantId}/orders/{orderId}/ready:
+    post:
+      tags: [orders]
+      summary: The order is ready for a rider
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not a shop the caller owns, or no such order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The order cannot move that way from where it is
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/orders/{orderId}/transition:
+    post:
+      tags: [orders]
+      summary: Move an order as an admin
+      description: |
+        The transition is still checked against the state machine. This is a way
+        in for operations, not a way round it.
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/OrderStatus" }
+                reason: { type: string }
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400":
+          description: That is not a state an order can be in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The order cannot move that way from where it is
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2520,6 +2951,139 @@ components:
       description: Short-lived access token. See docs/build/phases/P04.md.
 
   schemas:
+    OrderStatus:
+      type: string
+      description: |
+        Where an order is. The four terminal states — `delivered`, `cancelled`,
+        `rejected`, `failed` — have no moves out of them.
+
+        `rejected` is separate from `cancelled` because they are different facts
+        about different people: a shop that rejects often is a shop an admin
+        needs to see.
+      enum: [pending_payment, placed, accepted, preparing, ready, picked_up, delivered, cancelled, rejected, failed]
+
+    OrderLine:
+      type: object
+      description: |
+        One thing that was bought, at the price it was bought for. A copy, not a
+        reference: an order is a record of an agreement, and a shop renaming an
+        item must not rename it on last week's receipt.
+      required: [id, kind, target_id, name, options, quantity, unit_price, line_total]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [item, combo] }
+        target_id: { type: string, description: What it was, so a reorder button has something to point at. }
+        name: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            required: [name, price]
+            properties:
+              name: { type: string }
+              price: { $ref: "#/components/schemas/Money" }
+        quantity: { type: integer, minimum: 1 }
+        note: { type: string }
+        unit_price: { $ref: "#/components/schemas/Money" }
+        line_total: { $ref: "#/components/schemas/Money" }
+
+    OrderPlace:
+      type: object
+      description: One end of the delivery, copied onto the order at placement.
+      required: [name, lat, lng]
+      properties:
+        name: { type: string }
+        phone: { type: string }
+        single_line: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+
+    OrderEvent:
+      type: object
+      description: |
+        One thing that happened. The history is kept rather than derived: "when
+        did the shop accept it" is a question the customer asks and a status
+        column alone cannot answer.
+      required: [status, label, actor, at]
+      properties:
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        label: { type: string, description: The status in words, composed by the server. }
+        actor: { type: string, enum: [customer, merchant, partner, admin, system] }
+        reason: { type: string }
+        at: { type: string, format: date-time }
+
+    OrderCancellation:
+      type: object
+      description: |
+        Whether the customer may still call the order off. The window runs from
+        placement rather than acceptance: a customer changes their mind about
+        the decision they made, and a shop that takes six minutes to accept
+        should not thereby shorten the time they had.
+      required: [allowed, seconds_left, free_until]
+      properties:
+        allowed: { type: boolean }
+        reason:
+          type: string
+          enum: [already_finished, too_late, already_preparing]
+        text: { type: string, description: The sentence to show, composed by the server. }
+        seconds_left:
+          type: integer
+          description: Drives a countdown. From the server's clock, which is the one that decides.
+        free_until: { type: string, format: date-time }
+
+    Order:
+      type: object
+      required: [id, code, status, status_label, live, payment_method, lines, count, subtotal, delivery, total, receipt, pickup, destination, events, next_actions, cancel, placed_at, updated_at]
+      properties:
+        id: { type: string }
+        code:
+          type: string
+          description: |
+            The short reference a customer reads out on the phone. Drawn from an
+            alphabet with no I, O, 0 or 1 — the characters people confuse over a
+            bad line in a second language.
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        status_label: { type: string, example: "রান্না হচ্ছে" }
+        live: { type: boolean, description: Still going, so a client branches on one boolean rather than keeping a copy of which statuses are terminal. }
+        payment_method: { type: string, enum: [cash, online] }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/OrderLine" }
+        count: { type: integer }
+        subtotal: { $ref: "#/components/schemas/Money" }
+        delivery: { $ref: "#/components/schemas/Money" }
+        total: { $ref: "#/components/schemas/Money" }
+        receipt:
+          type: array
+          description: The frozen receipt, rebuilt from what was written down rather than re-quoted.
+          items: { $ref: "#/components/schemas/ReceiptRow" }
+        expanded: { type: boolean, description: Whether this delivery crossed the base radius (D2). }
+        distance_m: { type: number, format: double }
+        pickup: { $ref: "#/components/schemas/OrderPlace" }
+        destination: { $ref: "#/components/schemas/OrderPlace" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/OrderEvent" }
+        next_actions:
+          type: array
+          description: |
+            What *this caller* may do now, straight from the state machine. A
+            client with its own copy of the transition table would offer a shop
+            an Accept button on an order somebody already cancelled (2.9).
+          items: { $ref: "#/components/schemas/OrderStatus" }
+        cancel: { $ref: "#/components/schemas/OrderCancellation" }
+        placed_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    OrderList:
+      type: object
+      required: [orders, total]
+      properties:
+        orders:
+          type: array
+          items: { $ref: "#/components/schemas/Order" }
+        total: { type: integer, description: Matches before paging. }
+
     CartOption:
       type: object
       required: [group_id, option_id, name, price]

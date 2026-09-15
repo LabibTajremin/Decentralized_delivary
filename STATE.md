@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-15T00:00:00Z
-current_phase: P11
-current_task: P11.T01
+current_phase: P12
+current_task: P12.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -19,7 +19,8 @@ P07 DONE       catalogue — per-type schema differences, variants, add-ons, com
 P08 DONE       discovery — local visibility (D1), stepwise expansion with a cost (D2), the division ceiling (D3), ranking
 P09 DONE       cart — single merchant, revalidation against live prices and hours, invalidation on address change (D3)
 P10 DONE       pricing — ALG-05 banding exact at the edges, the D2 surcharge, free delivery; one implementation for card and receipt
-P11..P20 TODO
+P11 DONE       order — one transition table for four parties, idempotent placement, frozen prices, the free cancellation window
+P12..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -93,11 +94,11 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P11 — Order. Placement from a cart, the order state machine, the free
-cancellation window (order.cancellation_window) and the COD limit
-(order.cod_limit). It re-quotes authoritatively on the way in rather than
-trusting the price the customer was shown, and clears the cart through
-CartContract once the order exists. Depends on P09, P10 and P05.
+P12 — Dispatch. ALG-04 partner assignment on a min-heap scored by distance,
+load and acceptance rate; D4's long/short distance choice; ALG-08 the partner's
+job feed bounded by dispatch.partner_radius. It moves an order from ready to
+picked_up to delivered through OrderContract.Advance, which is the way in the
+order module left for it. Depends on P11 and P02.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -222,3 +223,16 @@ P10.T06 DONE  DiscoveryContract.Reach now carries the resolved placement, so the
 P10.T07 DONE  cart gained its receipt: external/pricing, a pricing block on the view, wire and contract
 P10.T08 DONE  unit tests at 100%, E2E proving the shop-card fee and the receipt fee are the same number
 P10.T09 DONE  docs/technical/pricing.md
+
+## P11 tasks
+P11.T01 DONE  domain — the lifecycle as one table, actors included; three distinguishable refusals
+P11.T02 DONE  domain — Order, frozen lines/charges/destination/pickup, the event history
+P11.T03 DONE  domain — the free cancellation window, running from placement rather than acceptance
+P11.T04 DONE  external/ seams to cart, pricing, merchant, user, discovery and config
+P11.T05 DONE  PlaceUseCase — ids in, prices read here; idempotency; one settings snapshot for both order rules
+P11.T06 DONE  TransitionUseCase — one use case for all four parties; ReadUseCase with per-actor views
+P11.T07 DONE  migration 0008, repository with a compare-and-set transition and a composite idempotency key
+P11.T08 DONE  OrderContract — MarkPaid, MarkPaymentFailed, Advance restricted to partner/admin/system
+P11.T09 DONE  transport — customer, shop and admin surfaces; MerchantContract gained OwnedBy
+P11.T10 DONE  unit, integration and E2E tests at 100%; two real bugs found (see docs/technical/order.md)
+P11.T11 DONE  docs/technical/order.md

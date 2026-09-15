@@ -77,4 +77,14 @@ type MerchantContract interface {
 
 	// IsAcceptingOrders reports whether a shop can take an order right now.
 	IsAcceptingOrders(ctx context.Context, merchantID string) (bool, error)
+
+	// OwnedBy returns the ids of the shops an account owns.
+	//
+	// Added in P11. The order module has to answer "is this shop yours" before
+	// it shows a queue or accepts an order on its behalf, and it cannot read
+	// the merchant table to find out (2.5). A slice rather than a single id
+	// because one owner per shop is today's rule and not a rule of the
+	// domain — a chain with three branches is a merchant conversation, not a
+	// schema migration for every consumer.
+	OwnedBy(ctx context.Context, ownerUserID string) ([]string, error)
 }
