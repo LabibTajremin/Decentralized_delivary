@@ -64,3 +64,9 @@ Every module exposes exactly one public contract interface. This is the only sur
 > switch and availability schedules: discovery does not need them, and a
 > contract that handed a competitor's stock levels over would be telling them
 > how a shop is doing. See docs/technical/catalogue.md.
+
+> **P08 note.** `DiscoveryContract` is implemented as one method, `Reach`. Cart
+> needs a single answer — may this address still order from this shop, and how
+> far is it — and a contract that also exposed the search would put a browse
+> endpoint inside a checkout path. The search result shape stays in discovery's
+> own application layer, where it belongs to the transport that renders it.

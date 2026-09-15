@@ -25,6 +25,9 @@ import (
 	cfgapp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/application"
 	cfgpg "github.com/rootlogic-lab/delivery/backend/internal/modules/config/infrastructure/persistence/postgres"
 	cfghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
+	discoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/application"
+	discofees "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/infrastructure/fees"
+	discohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/transport/http"
 	geoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application"
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
@@ -229,6 +232,16 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
 			return principal.UserID, ok
 		},
+	).Register(mux)
+
+	// Discovery (P08). D1's local visibility, D2's expansion and D3's ceiling.
+	// It owns no storage: geo says where shops are, merchant says which may be
+	// seen, and config says how far the customer can look from here. The fee
+	// quoter is provisional until pricing lands in P10 — see the package note.
+	discoveryQuoter := discofees.NewQuoter(configService)
+	discohttp.NewHandler(
+		discoapp.NewSearchUseCase(geoService, merchantService, configService, discoveryQuoter),
+		discoapp.NewReachUseCase(geoService, merchantService, configService),
 	).Register(mux)
 
 	// Demo imagery is served only outside production, so generated placeholder

@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-15T00:00:00Z
-current_phase: P08
-current_task: P08.T01
+current_phase: P09
+current_task: P09.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -16,7 +16,8 @@ P04 DONE       identity — phone+OTP, JWT, Redis refresh rotation, RBAC, auto-l
 P05 DONE       user — profile, address book, map pin, default address, area resolution
 P06 DONE       merchant — nationwide registration (D1), documents, approval workflow, hours, holiday mode
 P07 DONE       catalogue — per-type schema differences, variants, add-ons, combos, stock, availability, bulk update
-P08..P20 TODO
+P08 DONE       discovery — local visibility (D1), stepwise expansion with a cost (D2), the division ceiling (D3), ranking
+P09..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -90,9 +91,10 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P08 — Discovery. The radius search a customer actually sees: ALG-01 nearest-first
-within the division (D3), stepwise expansion when nothing is nearby (D2, ALG-02),
-and the merchant list the app renders. Depends on P02, P03 and P07.
+P09 — Cart. What a customer has chosen, held against a delivery address and
+revalidated against the shop's live prices, stock and hours. Depends on P07 and
+P08: the cart asks discovery whether the shop is still reachable from the
+address (DiscoveryContract.Reach) and catalogue what the lines now cost.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -184,3 +186,13 @@ exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (AD
   gives those shops menus, and the generated logos under
   `internal/platform/assets/demo/merchants/` are named after the same ids.
   `TestTheDemoShopsHaveRealMenus` fails if they drift apart.
+
+## P08 tasks
+P08.T01 DONE  domain — Policy (the ladder), Expansion, ranking (ALG-07), relevance, Bengali distance strings
+P08.T02 DONE  external/ seams to geo, merchant and config; no storage of its own
+P08.T03 DONE  SearchUseCase — ALG-01 fetch, ALG-02 stepwise expansion, clamped levels
+P08.T04 DONE  ReachUseCase + DiscoveryContract, the single-merchant answer cart will ask for
+P08.T05 DONE  provisional delivery quote (ALG-05) behind ports.DeliveryQuoter, replaced by pricing in P10
+P08.T06 DONE  public /v1/discovery transport, OpenAPI paths and schemas
+P08.T07 DONE  unit tests at 100%, E2E over the real seeded geography
+P08.T08 DONE  docs/technical/discovery.md

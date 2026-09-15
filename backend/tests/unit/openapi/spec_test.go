@@ -21,6 +21,7 @@ import (
 
 	cathttp "github.com/rootlogic-lab/delivery/backend/internal/modules/catalogue/transport/http"
 	confighttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
+	discohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/transport/http"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
 	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
 	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
@@ -77,6 +78,7 @@ func servedRoutes() []string {
 	routes = append(routes, userhttp.Patterns()...)
 	routes = append(routes, merchanthttp.Patterns()...)
 	routes = append(routes, cathttp.Patterns()...)
+	routes = append(routes, discohttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }
@@ -170,6 +172,14 @@ func TestPublicOperationsAreExplicitlyMarked(t *testing.T) {
 		"/v1/catalogue/{merchantId}/menu":             true,
 		"/v1/catalogue/{merchantId}/items/{itemId}":   true,
 		"/v1/catalogue/{merchantId}/combos/{comboId}": true,
+
+		// Discovery is public for the same reason, and more sharply: a customer
+		// who has to create an account to find out whether anything delivers to
+		// their village is a customer who does not create an account. The
+		// delivery point comes from the query rather than a saved address, so
+		// nothing here reads anyone's data.
+		"/v1/discovery/merchants":              true,
+		"/v1/discovery/merchants/{merchantId}": true,
 	}
 	for path, ops := range loadSpec(t).Paths {
 		for method, op := range ops {
@@ -192,6 +202,9 @@ func TestPublicOperationsAreExplicitlyMarked(t *testing.T) {
 func TestRequiredParametersAreReallyRequired(t *testing.T) {
 	mux := http.NewServeMux()
 	geohttp.NewHandler(nil).Register(mux)
+	// Discovery reads its required parameters before it touches a use case, so
+	// nil dependencies are enough to check that it refuses a missing one.
+	discohttp.NewHandler(nil, nil).Register(mux)
 
 	checked := 0
 	for path, ops := range loadSpec(t).Paths {

@@ -34,6 +34,12 @@ tags:
       on the caller's own data: the user id comes from the verified token, never
       from the request, because an endpoint that takes one from the client is an
       endpoint that will be asked for somebody else's home address.
+  - name: discovery
+    description: |
+      What a customer can order from, where they are standing. This is the
+      decentralization model as an API: nationwide registration, local
+      visibility (D1), expansion that costs more (D2), and a division boundary
+      that expansion can never cross (D3).
   - name: geo
     description: |
       Administrative geography and spatial queries. Every distance in the system
@@ -2182,6 +2188,98 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 
+  /v1/discovery/merchants:
+    get:
+      tags: [discovery]
+      summary: Shops a customer can order from, here
+      description: |
+        D1, D2 and D3 in one call. The server resolves the delivery point to a
+        division, reads the radius ladder configured for that place, searches
+        nearest-first inside the division boundary, and returns both the shops
+        and the whole expansion decision — whether a wider search exists,
+        whether it should be offered, and what it would cost.
+
+        Nothing here is left for the client to work out. The distance, the
+        delivery fee and the notice above the list are all composed by the
+        server (05-architecture.md 2.9), and `expansion.offered` is the answer
+        to "should I show the widen button", not an input to it.
+      security: []
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, format: double } }
+        - { name: lng, in: query, required: true, schema: { type: number, format: double } }
+        - name: level
+          in: query
+          required: false
+          description: |
+            Expansion level to search at, 0 being the base radius. Clamped to
+            the configured ladder rather than refused: the client is holding a
+            number this server gave it, and configuration may have narrowed the
+            ladder since.
+          schema: { type: integer, minimum: 0, default: 0 }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [restaurant, grocery, pharmacy] } }
+        - { name: q, in: query, required: false, description: Filters by shop name., schema: { type: string } }
+        - { name: lang, in: query, required: false, description: "`en` for English; anything else is Bengali.", schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: What is in range, and what widening would do
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoverySearch" }
+        "400":
+          description: The delivery point or a filter is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: The delivery point falls outside every division we serve
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The search could not be run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/discovery/merchants/{merchantId}:
+    get:
+      tags: [discovery]
+      summary: Whether one shop is reachable from a delivery point
+      description: |
+        The single-merchant form of the search, for a cart whose delivery
+        address has changed. A shop across a division boundary is unreachable
+        at every expansion level (D3), which is a different answer from "too
+        far for now" and is reported as such.
+      security: []
+      parameters:
+        - { name: merchantId, in: path, required: true, schema: { type: string } }
+        - { name: lat, in: query, required: true, schema: { type: number, format: double } }
+        - { name: lng, in: query, required: true, schema: { type: number, format: double } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The reachability answer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscoveryReach" }
+        "400":
+          description: The delivery point is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such shop, or a point outside every division we serve
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The check could not be run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2191,6 +2289,112 @@ components:
       description: Short-lived access token. See docs/build/phases/P04.md.
 
   schemas:
+    DeliveryFee:
+      type: object
+      description: |
+        A delivery charge in both forms: the integer to compute with and the
+        string to render. A client that formatted money itself would eventually
+        format it differently from the receipt (2.9).
+      required: [minor, currency, display, expanded]
+      properties:
+        minor: { type: integer, format: int64, description: Amount in poisha. }
+        currency: { type: string, example: BDT }
+        display: { type: string, example: "৳ 90" }
+        expanded:
+          type: boolean
+          description: |
+            Whether an expansion surcharge was applied, so the app can say why
+            the fee is higher instead of leaving the customer to guess (D2).
+
+    DiscoveryExpansion:
+      type: object
+      description: |
+        The whole expansion decision, already made by the server. A client that
+        worked out whether to offer a wider search would be deciding visibility,
+        which 2.9 forbids, and would need a copy of three configuration values
+        to do it.
+      required: [level, radiusM, radius, stage, canExpand, offered, atCeiling]
+      properties:
+        level: { type: integer, description: "Expansion level searched at, 0 being the base radius." }
+        radiusM: { type: number, format: double }
+        radius: { type: string, example: "৫ কিমি" }
+        stage:
+          type: string
+          enum: [base, expanded, ceiling]
+          description: |
+            `ceiling` is terminal. D3 stops expansion at the division boundary,
+            so this is the end of what the customer can ever see — not a step
+            that happens to be last.
+        canExpand: { type: boolean }
+        offered:
+          type: boolean
+          description: |
+            Whether to *prompt* the customer to expand, as opposed to merely
+            allowing it. A customer looking at forty restaurants does not need a
+            button suggesting they look further and pay more.
+        atCeiling: { type: boolean }
+        nextLevel: { type: integer }
+        nextRadiusM: { type: number, format: double }
+        nextRadius: { type: string }
+
+    DiscoveryMerchant:
+      type: object
+      description: One shop on the customer's list, with every field final.
+      required: [id, name, type, lat, lng, distanceM, distance, isOpenNow, openStatus, delivery]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [restaurant, grocery, pharmacy] }
+        logoUrl: { type: string }
+        phone: { type: string }
+        areaName: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        distanceM: { type: number, format: double }
+        distance: { type: string, example: "১.২ কিমি" }
+        isOpenNow: { type: boolean }
+        openStatus: { type: string, example: "খোলা আছে — বন্ধ হবে 22:00" }
+        delivery: { $ref: "#/components/schemas/DeliveryFee" }
+
+    DiscoverySearch:
+      type: object
+      required: [division, notice, total, expansion, merchants]
+      properties:
+        division: { type: string }
+        areaName: { type: string }
+        notice:
+          type: string
+          description: |
+            The one line to show above the list — nothing found, expansion
+            offered, or the division ceiling reached. Composed by the server so
+            every client says the same thing.
+        total: { type: integer, description: Matches before paging. }
+        expansion: { $ref: "#/components/schemas/DiscoveryExpansion" }
+        merchants:
+          type: array
+          items: { $ref: "#/components/schemas/DiscoveryMerchant" }
+
+    DiscoveryReach:
+      type: object
+      required: [merchantId, distanceM, distance, reachable, requiredLevel, expanded]
+      properties:
+        merchantId: { type: string }
+        distanceM: { type: number, format: double }
+        distance: { type: string }
+        reachable: { type: boolean }
+        requiredLevel:
+          type: integer
+          description: |
+            Expansion level needed to see this shop, 0 when it is inside the
+            base radius. Meaningless when `reachable` is false.
+        expanded: { type: boolean }
+        reason:
+          type: string
+          enum: [outside_division, beyond_max_radius]
+          description: |
+            Why an unreachable shop is unreachable. `outside_division` is
+            permanent — D3 makes it unreachable at any radius.
+
     Unit:
       type: string
       description: How an item is sold. Required for grocery and pharmacy items.
