@@ -200,3 +200,15 @@ func TestServiceResolvesADivisionAtTheBoundary(t *testing.T) {
 		t.Errorf("code = %q, want invalid_coordinate", errs.CodeOf(err))
 	}
 }
+
+// TestResolvingADivisionPassesGeosOwnRefusalThrough rather than inventing a
+// second wording for a point outside the country.
+func TestResolvingADivisionPassesGeosOwnRefusalThrough(t *testing.T) {
+	svc, repo := newService(t)
+	repo.divisionErr = domain.ErrUnknownDivision
+
+	_, err := svc.ResolveDivision(context.Background(), contract.Point{Lat: 48.8584, Lng: 2.2945})
+	if got := errs.CodeOf(err); got != "outside_service_area" {
+		t.Errorf("code = %q, want outside_service_area", got)
+	}
+}

@@ -1,7 +1,7 @@
 # BUILD STATE
-last_updated: 2026-09-14T00:00:00Z
-current_phase: P07
-current_task: P07.T01
+last_updated: 2026-09-15T00:00:00Z
+current_phase: P08
+current_task: P08.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -15,7 +15,8 @@ P03 DONE       config module — D5 registry, area resolution, audit log, admin 
 P04 DONE       identity — phone+OTP, JWT, Redis refresh rotation, RBAC, auto-login
 P05 DONE       user — profile, address book, map pin, default address, area resolution
 P06 DONE       merchant — nationwide registration (D1), documents, approval workflow, hours, holiday mode
-P07..P20 TODO
+P07 DONE       catalogue — per-type schema differences, variants, add-ons, combos, stock, availability, bulk update
+P08..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -72,9 +73,26 @@ P06.T11 DONE  demo seed — 14 approved shops behind the points geo already plac
 P06.T12 DONE  unit, integration and E2E tests at 100%
 P06.T13 DONE  OpenAPI paths + schemas, docs/technical/merchant.md, Appendix A note
 
+## P07 tasks
+P07.T01 DONE  shared/money — minor units in an int64, and the one display string (2.9)
+P07.T02 DONE  shared/schedule — the weekly timetable, extracted from P06's opening hours
+P07.T03 DONE  ADR 0007 + a tightened architecture guard for domain-visible value objects
+P07.T04 DONE  domain — categories, items, per-type attributes and the Capabilities table
+P07.T05 DONE  domain — variants, add-ons, combos, stock, scheduled availability
+P07.T06 DONE  use cases — categories, items, options, combos, transactional bulk update
+P07.T07 DONE  migration 0006 and a repository that reads a menu in a fixed number of queries
+P07.T08 DONE  CatalogueContract + service, shelf counts deliberately excluded
+P07.T09 DONE  transport — owner routes behind ownership checks, public menu reads
+P07.T10 DONE  OpenAPI paths + schemas, with the public reads declared
+P07.T11 DONE  demo seed — menus for all 14 shops, in each type's own shape
+P07.T12 DONE  unit tests to 100% on domain, application, transport and both kernel packages
+P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
+P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
+
 ## Next phase
-P07 — Catalogue. Categories, items, variants, add-ons, combos, stock, scheduled
-availability, bulk update, and the per-merchant-type schema differences.
+P08 — Discovery. The radius search a customer actually sees: ALG-01 nearest-first
+within the division (D3), stepwise expansion when nothing is nearby (D2, ALG-02),
+and the merchant list the app renders. Depends on P02, P03 and P07.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -93,7 +111,7 @@ availability, bulk update, and the per-merchant-type schema differences.
 
 ## Coverage
 backend total: 100.0%
-last verified: 2026-09-14 (local PostGIS 3.4)
+last verified: 2026-09-15 (local PostGIS 3.4)
 exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (ADR 0006)
 
 ## Notes for next session
@@ -141,3 +159,28 @@ exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (AD
 - `psql -c "a; b; c"` runs the statements in one transaction, so a failure in the
   third rolls back the first two. Resetting the local schema by hand needs
   separate `-c` invocations.
+- P07 amended architecture rule 2.2, which is worth knowing before writing
+  another module. A `domain/` may now import a shared package, but only one
+  that is on a short named list (`money`, `schedule`) *and* verifiably imports
+  nothing internal itself. ADR 0007 records why; the guard in
+  `backend/tests/unit/architecture_test.go` checks both halves. A purity-only
+  guard would have admitted `shared/errs`, which is how that gap was found —
+  every version of the guard was probed with a deliberate violation.
+- `scripts/migrate-check.sh` applies SQL directly rather than through the
+  migrator, so it now clears `schema_migrations` after rolling back. Without
+  that it left a developer's database with the tables gone and the ledger
+  claiming they existed, and the next `migrate up` skipped everything then
+  failed on the first migration referencing a missing table. If the local
+  database ever gets into that state: `psql "$DATABASE_URL" -c "DELETE FROM
+  schema_migrations"` then `migrate up`.
+- The E2E `logTail.lastCode` helper now waits for a code it has not already
+  handed out, tracking a count rather than the value. It previously returned as
+  soon as any code was in the buffer, so a second sign-in against the same
+  server could read the *previous* account's code and fail verification with a
+  401 that looked like a rate limit. Tests doing two sign-ins got away with it;
+  one doing six did not.
+- The demo data is now three seeds that must agree on ids: `0001_geo.sql` places
+  fourteen points, `0005_merchant.sql` gives them shops, `0006_catalogue.sql`
+  gives those shops menus, and the generated logos under
+  `internal/platform/assets/demo/merchants/` are named after the same ids.
+  `TestTheDemoShopsHaveRealMenus` fails if they drift apart.

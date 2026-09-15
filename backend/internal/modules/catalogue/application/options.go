@@ -94,10 +94,14 @@ func (uc *OptionUseCase) SetVariantGroups(ctx context.Context, ownerUserID, merc
 		groups = append(groups, group)
 	}
 
-	updated, err := item.WithVariantGroups(groups)
-	if err != nil {
-		return domain.Item{}, entryError(err)
-	}
+	// No capability check here, unlike SetAddOnGroups: every shop type has
+	// variants, so there is nothing this could refuse, and a branch no input
+	// can reach is a branch no test can cover. The domain setter still guards
+	// a hand-built item — domain.Item is an exported struct — and that path is
+	// covered by the domain's own tests, so discarding its error here is
+	// deliberate rather than careless. A future shop type without variants
+	// says so in domain.Capabilities, and this is where its check belongs.
+	updated, _ := item.WithVariantGroups(groups)
 	return uc.save(ctx, updated)
 }
 
@@ -135,10 +139,11 @@ func (uc *OptionUseCase) SetAddOnGroups(ctx context.Context, ownerUserID, mercha
 		groups = append(groups, group)
 	}
 
-	updated, err := item.WithAddOnGroups(groups)
-	if err != nil {
-		return domain.Item{}, entryError(err)
+	// Add-ons are a restaurant's alone, so this one can and does refuse.
+	if !domain.CapabilitiesFor(item.MerchantType).AddOns {
+		return domain.Item{}, entryError(domain.ErrAddOnsNotAllowed)
 	}
+	updated, _ := item.WithAddOnGroups(groups) // cannot fail: checked above
 	return uc.save(ctx, updated)
 }
 

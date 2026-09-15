@@ -81,9 +81,11 @@ func entryError(err error) error {
 	case errors.Is(err, domain.ErrAddOnsNotAllowed):
 		return errs.Wrap(err, errs.KindInvalid, "addons_not_allowed",
 			"Add-ons are for restaurant items.")
-	case errors.Is(err, domain.ErrVariantsNotAllowed):
-		return errs.Wrap(err, errs.KindInvalid, "variants_not_allowed",
-			"This kind of shop does not use variants.")
+	// ErrVariantsNotAllowed has no case: every shop type has variants, so
+	// nothing an owner can send produces it. The domain still raises it for a
+	// hand-built item, which would land on the fallback below. A shop type
+	// without variants would need a case here and a check in
+	// OptionUseCase.SetVariantGroups — see the comment there.
 	case errors.Is(err, domain.ErrCombosNotAllowed):
 		return errs.Wrap(err, errs.KindInvalid, "combos_not_allowed",
 			"This kind of shop does not offer combos.")

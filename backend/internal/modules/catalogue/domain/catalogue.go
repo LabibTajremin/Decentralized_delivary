@@ -90,7 +90,10 @@ func (t MerchantType) String() string { return string(t) }
 type Capabilities struct {
 	// Variants are mutually-exclusive choices within one item: a size, a
 	// strength, a pack. Every type has them, because every type sells the same
-	// thing in more than one size.
+	// thing in more than one size — which is why nothing currently checks this
+	// field before accepting variant groups. A shop type that sets it false
+	// needs that check adding in OptionUseCase.SetVariantGroups and a case in
+	// the application's entryError.
 	Variants bool
 	// AddOns are extras bought alongside: extra cheese, a soft drink. Only a
 	// restaurant has them — "extra cheese" on a box of paracetamol is not a

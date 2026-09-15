@@ -57,3 +57,10 @@ Every module exposes exactly one public contract interface. This is the only sur
 > and delivery need different strictness: an address must resolve to a mapped
 > area, while a merchant may register from anywhere in Bangladesh — including an
 > upazila we have not drawn an area for. See docs/technical/merchant.md.
+
+> **P07 note.** `CatalogueContract` carries money as both a minor-unit integer
+> and a preformatted display string, like every other amount that crosses a
+> boundary (2.9). It deliberately omits shelf counts, the owner's visibility
+> switch and availability schedules: discovery does not need them, and a
+> contract that handed a competitor's stock levels over would be telling them
+> how a shop is doing. See docs/technical/catalogue.md.

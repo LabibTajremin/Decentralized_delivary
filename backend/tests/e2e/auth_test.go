@@ -53,6 +53,9 @@ func startAuthAPI(t *testing.T) (string, *logTail, func()) {
 type logTail struct {
 	buf *bytes.Buffer
 	mu  chan struct{}
+	// consumed counts the codes already handed to a caller, so the next
+	// sign-in waits for a genuinely new one rather than re-reading the last.
+	consumed int
 }
 
 func newLogTail(t *testing.T) *logTail {
@@ -75,34 +78,50 @@ var codePattern = regexp.MustCompile(`"code":"(\d{6})"`)
 // bytes are drained — reading immediately passes on an idle machine and fails
 // under load, which is a flake manufactured by the test rather than a fault in
 // the server.
+//
+// It waits for a code it has not already handed out, not merely for the buffer
+// to be non-empty. The buffer accumulates across every sign-in a test makes
+// against one server, so "return the last code present" hands back the previous
+// account's code whenever the new one has not been flushed yet — and the verify
+// then fails with a 401 that looks like a rate limit. A test doing two sign-ins
+// usually got away with it; one doing six does not.
 func (l *logTail) lastCode(t *testing.T) string {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if code := l.scanForCode(); code != "" {
+		if code, ok := l.nextCode(); ok {
 			return code
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("no one-time code was logged within 5s; server output was:\n%s", l.snapshot())
+			t.Fatalf("no new one-time code was logged within 5s; server output was:\n%s", l.snapshot())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 }
 
-// scanForCode returns the last logged code, or "" if none has arrived yet.
-func (l *logTail) scanForCode() string {
+// nextCode returns the newest code the caller has not seen yet.
+//
+// The count of codes handed out is the cursor rather than the code itself,
+// because two accounts can legitimately be issued the same six digits and
+// comparing values would then wait forever for a code that had already arrived.
+func (l *logTail) nextCode() (string, bool) {
 	l.mu <- struct{}{}
 	defer func() { <-l.mu }()
 
-	var last string
+	var codes []string
 	scanner := bufio.NewScanner(bytes.NewReader(l.buf.Bytes()))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		if m := codePattern.FindStringSubmatch(scanner.Text()); m != nil {
-			last = m[1]
+			codes = append(codes, m[1])
 		}
 	}
-	return last
+
+	if len(codes) <= l.consumed {
+		return "", false
+	}
+	l.consumed = len(codes)
+	return codes[len(codes)-1], true
 }
 
 // snapshot copies the captured output for an error message.
