@@ -7,6 +7,48 @@ status: IN_PROGRESS
 blocked: false
 blocker_reason: ""
 
+## Resume here
+
+A fresh session starts with no memory of how any of this was built. Read
+`CLAUDE.md` (the working agreement) and then this file; together they are the
+whole context.
+
+Standing order from the user, still in force: **finish all twenty phases, do
+not stop, do not merge anything, do not open a pull request, push only to
+`claude/goklay-design-system-9z500x`.** Pausing at a usage limit is fine —
+resume when it resets. "Continue" means: pick up `current_task` above and keep
+going.
+
+Next action: **start P13 (Payment)** — read `docs/build/phases/P13.md`, write
+its task list into the `## P13 tasks` section below, and build it the way every
+other phase was built (`CLAUDE.md` → "How a phase goes").
+
+Before running anything:
+
+```bash
+export DATABASE_URL="postgres://delivery@127.0.0.1:5433/delivery?sslmode=disable"
+export REDIS_URL="redis://127.0.0.1:6379/0"
+./scripts/dev-postgres.sh && ./scripts/dev-redis.sh   # both die on container restart
+```
+
+## What is left
+
+| Phase | What it is | Acceptance, in short |
+|---|---|---|
+| P13 | Payment | PaymentContract only, COD ledger reconciles, idempotent webhooks |
+| P14 | Tracking & notifications | status and location streams deliver; SMS falls back when push fails |
+| P15 | Admin & auto-tuning | every Appendix B variable admin-controllable per area; ALG-09 within bounds and logged; **the division ceiling still cannot be disabled** |
+| P16 | Reviews & support | ratings for merchant, partner and item; the refund workflow completes |
+| P17 | Flutter foundation | tokens from the Figma file, thin-client lint wired *before* any screen, 48dp targets, Bengali string lengths |
+| P18 | Flutter customer app | every customer screen in the Figma registry, no money arithmetic in the app, capability flags drive enabled states |
+| P19 | Flutter merchant & partner apps | every merchant and partner screen, same thin-client rule |
+| P20 | Hardening & release | full E2E regression, load test on discovery and dispatch, security review, production runbook |
+
+The backend seams the later phases are meant to use already exist: payment has
+`OrderContract.MarkPaid` / `MarkPaymentFailed` and the system-only
+`pending_payment → placed` move; tracking has the order event history and the
+dispatch job; admin has the config module's registry and audit log.
+
 ## Phase status
 P00 DONE       foundation, gates, CI
 P01 DONE       shared kernel, 100% covered
@@ -267,3 +309,7 @@ Three holes the fakes could not see, all found by driving the real thing:
   declined is right while somebody else is standing by, and wrong when nobody
   is: the job would never be offered again. The round now falls back to the
   full pool when the filtered one is empty.
+
+## P13 tasks
+(not yet written — author them from docs/build/phases/P13.md at the start of
+the phase, the way P08–P12 were, then work them in order)
