@@ -21,6 +21,40 @@ The user's instructions, still in force:
   anywhere else without explicit permission.
 - **Do not open a pull request** unless the user asks for one.
 
+## Which model runs which phase
+
+| Phases | Model | Why |
+|---|---|---|
+| P13 – P16 | **Sonnet 5** | backend modules, built against an established pattern: eleven modules to copy, acceptance criteria that are mechanically checkable, and gates that fail loudly |
+| P17 – P20 | **Opus** (the user switches) | the Flutter phases are the least constrained by existing code, and P17 decides a foundation the next three phases are built on — a wrong one there is expensive to undo |
+
+**Hard stop: do not start P17.** When P16 is committed and pushed, run the
+handover below, tell the user in one line that P16 is done and P17 needs the
+model switched to Opus, and end the turn. Do not begin the Flutter work, do not
+scaffold it, do not "just set up the folders". If the user says to carry on with
+Sonnet anyway, that is their call — do it, and say once that P17 is the phase
+this plan wanted Opus for.
+
+### Handing the build over
+
+The point is that the next session costs almost nothing to start: it reads two
+files, not a conversation. Before telling the user to switch:
+
+1. `./scripts/verify.sh` exits 0.
+2. Everything is committed and pushed to
+   `claude/goklay-design-system-9z500x`; `git status` is clean.
+3. `STATE.md` is current: `current_phase`, `current_task`, the phase-status
+   table, the finished phase's task list, and anything the tests caught that
+   the next session would otherwise rediscover the hard way.
+4. `docs/technical/<module>.md` exists for the phase just finished.
+5. `./scripts/handover.sh` exits 0 — it checks 1–3 mechanically.
+
+Then the user starts a **new session** on the new model (cheaper than switching
+inside one: a switch re-sends the whole conversation, a new session reads
+`CLAUDE.md` + `STATE.md` and nothing else) with:
+
+> Read CLAUDE.md and STATE.md, then continue from current_task.
+
 ## How a phase goes
 
 One commit per phase, pushed when the phase is done and every gate is green.

@@ -6,6 +6,8 @@ current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
 blocker_reason: ""
+model_plan: P13-P16 Sonnet 5, P17-P20 Opus
+stop_after: P16          # finish P16, hand over, do not start P17
 
 ## Resume here
 
@@ -18,6 +20,12 @@ not stop, do not merge anything, do not open a pull request, push only to
 `claude/goklay-design-system-9z500x`.** Pausing at a usage limit is fine —
 resume when it resets. "Continue" means: pick up `current_task` above and keep
 going.
+
+**Stop after P16.** P13–P16 are this model's; P17 is where the user switches to
+Opus, because the Flutter foundation decides what P18 and P19 are built on. When
+P16 is committed and pushed, run `./scripts/handover.sh`, tell the user P16 is
+done and P17 wants the model switched, and stop there. `CLAUDE.md` →
+"Which model runs which phase" has the whole procedure.
 
 Next action: **start P13 (Payment)** — read `docs/build/phases/P13.md`, write
 its task list into the `## P13 tasks` section below, and build it the way every
@@ -314,3 +322,35 @@ Three holes the fakes could not see, all found by driving the real thing:
 ## P13 tasks
 (not yet written — author them from docs/build/phases/P13.md at the start of
 the phase, the way P08–P12 were, then work them in order)
+
+## P17 pre-brief (for whoever picks up the Flutter work)
+
+Written while the backend was fresh, so the next session does not have to
+re-derive it.
+
+- **Three apps, one foundation.** `frontend/customer`, `frontend/merchant` and
+  `frontend/partner` exist and are empty. P17 builds what all three share;
+  P18 is the customer app, P19 the other two.
+- **Design source: Figma `NlVjn8OuvmLjbm8z8TDVlR`** (`docs/build/00-rules.md`).
+  Tokens come from the file, not from taste. The Figma MCP tools are available
+  for reading it.
+- **`scripts/thin-client-lint.sh` currently says "no Dart sources yet, nothing
+  to check".** It has to be wired and *proven* — by feeding it a deliberate
+  violation — before any screen exists. P17's acceptance says before, and it
+  means before: a lint added afterwards finds a codebase already full of the
+  thing it forbids.
+- **What the client must never do (ADR 0004, 2.9):** no money arithmetic, no
+  distance or fee calculation, no deciding which actions are available, no
+  composing user-facing text. The server already sends, for every screen: money
+  as `{minor, display}`, every label and notice, `next_actions`, feed `reason` +
+  `notice`, `cancel.{allowed, reason, text, seconds_left}`. If a screen seems to
+  need a calculation, the endpoint is missing a field — add it to the backend.
+- **Bengali is the default, `?lang=en` the exception.** Lay out for Bengali
+  string lengths; they are longer than the English ones, and a row that fits
+  "Delivered" does not fit "পৌঁছে দেওয়া হয়েছে".
+- **`api/openapi.yaml` is the contract the client is generated from.** It is
+  kept honest by `backend/tests/unit/openapi` — an undocumented route or a
+  documented route nothing serves both fail CI.
+- Gates that will apply once Dart exists and are already wired into
+  `scripts/verify.sh`: `flutter analyze`, the thin-client lint, the Flutter
+  coverage gate, the APK size budget.
