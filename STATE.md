@@ -26,10 +26,11 @@ other phase was built (`CLAUDE.md` → "How a phase goes").
 Before running anything:
 
 ```bash
-export DATABASE_URL="postgres://delivery@127.0.0.1:5433/delivery?sslmode=disable"
-export REDIS_URL="redis://127.0.0.1:6379/0"
-./scripts/dev-postgres.sh && ./scripts/dev-redis.sh   # both die on container restart
+./scripts/verify.sh      # every gate CI runs, services started for you
 ```
+
+That is also how a phase ends: it must exit 0 before the phase is committed as
+done.
 
 ## What is left
 

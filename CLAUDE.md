@@ -32,26 +32,24 @@ One commit per phase, pushed when the phase is done and every gate is green.
    plus `external/` and `contract/`.
 4. Migration, OpenAPI, wiring in `cmd/api/main.go`.
 5. Tests: unit (fakes), integration (real Postgres), E2E (the real binary).
-6. Every gate green — see below.
+6. `./scripts/verify.sh` — every gate green, no exceptions.
 7. `docs/technical/<module>.md`, then `STATE.md`, then commit and push.
 
-## The gates — all of them, every phase
+## The gates — one command
 
 ```bash
-export DATABASE_URL="postgres://delivery@127.0.0.1:5433/delivery?sslmode=disable"
-export REDIS_URL="redis://127.0.0.1:6379/0"
-./scripts/dev-postgres.sh          # after any container restart, both of these
-./scripts/dev-redis.sh             # go down and must be re-run
-
-cd backend && go build ./... && go vet ./... && golangci-lint run ./...
-cd backend/tests && gofmt -l . && go vet ./...
-./scripts/migrate-check.sh         # up and down both clean
-./scripts/coverage-gate.sh         # 100.0%, no exceptions
-./scripts/thin-client-lint.sh      # once Flutter exists (P17+)
+./scripts/verify.sh
 ```
 
-`-count=1` is mandatory: the architecture guard tests read files outside their
-own package, so a cached PASS hides a real violation.
+It runs every check CI runs, in CI's order, brings the local Postgres and Redis
+up first (they do not survive a container restart), keeps going after a failure
+so you see all of them, and prints a list at the end. **A phase is not finished
+until it exits 0.** Do not commit a phase as done on a partial check, and do not
+substitute your own shorter command for it.
+
+`-count=1` is mandatory anywhere you run tests by hand: the architecture guard
+tests read files outside their own package, so a cached PASS hides a real
+violation. Every script here already passes it.
 
 ## Rules that are not negotiable
 
