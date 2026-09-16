@@ -16,6 +16,7 @@ import (
 	cartcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/cart/contract"
 	cfgcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/config/contract"
 	discocontract "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/contract"
+	dispatchcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/dispatch/contract"
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/domain"
@@ -301,3 +302,27 @@ func (c *fixedClock) Now() time.Time { return c.at }
 
 // placedAt is the instant every order in these tests is placed.
 var placedAt = time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+
+// fakeDispatch stands in for the dispatch module.
+//
+// The order tells dispatch when an order becomes ready to collect, and when one
+// goes away. Both calls are best-effort from the order's side, which is what
+// these tests pin: a dispatch outage must not stop a shop marking food ready.
+type fakeDispatch struct {
+	err      error
+	offered  []string
+	withdrew []string
+}
+
+func (d *fakeDispatch) Offer(_ context.Context, req dispatchcontract.OfferRequest) (dispatchcontract.Job, error) {
+	d.offered = append(d.offered, req.OrderID)
+	if d.err != nil {
+		return dispatchcontract.Job{}, d.err
+	}
+	return dispatchcontract.Job{ID: "JOB-1", OrderID: req.OrderID, Status: "waiting"}, nil
+}
+
+func (d *fakeDispatch) Withdraw(_ context.Context, orderID, _ string) error {
+	d.withdrew = append(d.withdrew, orderID)
+	return d.err
+}

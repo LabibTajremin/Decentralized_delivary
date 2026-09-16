@@ -24,6 +24,7 @@ type rig struct {
 	discovery *fakeDiscovery
 	config    *fakeConfig
 	pricing   *fakeConfig
+	dispatch  *fakeDispatch
 	clock     *fixedClock
 
 	place       *application.PlaceUseCase
@@ -46,10 +47,12 @@ func newRig() *rig {
 	clk := &fixedClock{at: placedAt}
 	ids := &fakeIDs{}
 
-	transitions := application.NewTransitionUseCase(repo, shop, config, clk, ids)
+	dispatcher := &fakeDispatch{}
+	transitions := application.NewTransitionUseCase(repo, shop, config, dispatcher, clk, ids)
 	return &rig{
 		repo: repo, cart: cart, merchant: shop, user: users,
-		discovery: disco, config: config, pricing: prices, clock: clk,
+		discovery: disco, config: config, pricing: prices,
+		dispatch: dispatcher, clock: clk,
 		place: application.NewPlaceUseCase(
 			repo, &fakeCodes{}, cart, pricingapp.NewService(prices),
 			shop, users, disco, config, clk, ids,

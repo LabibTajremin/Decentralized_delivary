@@ -125,10 +125,11 @@ func openAllHours(t *testing.T, base string, tail *logTail) (merchantID string, 
 }
 
 // readyToOrder signs a customer in, gives them an address, and fills a cart at
-// a shop that is open. It returns their token, the shop's id and the address id.
-func readyToOrder(t *testing.T, base string, tail *logTail) (tokens, string, string) {
+// a shop that is open. It returns their token, the shop's owner, the shop's id
+// and the address id.
+func readyToOrder(t *testing.T, base string, tail *logTail) (tokens, tokens, string, string) {
 	t.Helper()
-	shopID, _, itemID := openAllHours(t, base, tail)
+	shopID, owner, itemID := openAllHours(t, base, tail)
 	customer := signInAs(t, base, tail, uniquePhone(t), "customer phone", "customer")
 
 	var address struct {
@@ -153,14 +154,14 @@ func readyToOrder(t *testing.T, base string, tail *logTail) (tokens, string, str
 		t.Fatalf("place cart: status = %d", status)
 	}
 
-	return customer, shopID, address.ID
+	return customer, owner, shopID, address.ID
 }
 
 func TestACustomerPlacesAnOrder(t *testing.T) {
 	base, tail, stop := startAuthAPI(t)
 	defer stop()
 
-	customer, shopID, addressID := readyToOrder(t, base, tail)
+	customer, _, shopID, addressID := readyToOrder(t, base, tail)
 
 	var order orderResponse
 	status := requestAs(t, http.MethodPost, base+"/v1/orders?lang=en",
@@ -236,7 +237,7 @@ func TestOneIdempotencyKeyCreatesOneOrder(t *testing.T) {
 	base, tail, stop := startAuthAPI(t)
 	defer stop()
 
-	customer, _, addressID := readyToOrder(t, base, tail)
+	customer, _, _, addressID := readyToOrder(t, base, tail)
 	body := fmt.Sprintf(`{"address_id":%q,"payment_method":"cash"}`, addressID)
 
 	var first, second orderResponse
@@ -523,7 +524,7 @@ func TestAnOrderIsPrivateToItsCustomer(t *testing.T) {
 	base, tail, stop := startAuthAPI(t)
 	defer stop()
 
-	customer, _, addressID := readyToOrder(t, base, tail)
+	customer, _, _, addressID := readyToOrder(t, base, tail)
 	var order orderResponse
 	if status := requestAs(t, http.MethodPost, base+"/v1/orders",
 		fmt.Sprintf(`{"address_id":%q,"payment_method":"cash"}`, addressID),
@@ -556,7 +557,7 @@ func TestACustomerCancelsInsideTheWindow(t *testing.T) {
 	base, tail, stop := startAuthAPI(t)
 	defer stop()
 
-	customer, _, addressID := readyToOrder(t, base, tail)
+	customer, _, _, addressID := readyToOrder(t, base, tail)
 	var order orderResponse
 	if status := requestAs(t, http.MethodPost, base+"/v1/orders",
 		fmt.Sprintf(`{"address_id":%q,"payment_method":"cash"}`, addressID),
@@ -603,7 +604,7 @@ func TestAPrepaidOrderWaitsForPayment(t *testing.T) {
 	base, tail, stop := startAuthAPI(t)
 	defer stop()
 
-	customer, _, addressID := readyToOrder(t, base, tail)
+	customer, _, _, addressID := readyToOrder(t, base, tail)
 	var order orderResponse
 	if status := requestAs(t, http.MethodPost, base+"/v1/orders?lang=en",
 		fmt.Sprintf(`{"address_id":%q,"payment_method":"online"}`, addressID),

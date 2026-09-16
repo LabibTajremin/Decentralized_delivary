@@ -34,6 +34,13 @@ tags:
       on the caller's own data: the user id comes from the verified token, never
       from the request, because an endpoint that takes one from the client is an
       endpoint that will be asked for somebody else's home address.
+  - name: partner
+    description: |
+      The delivery partner's app, and the operations sweep behind it. D4 lives
+      here: a partner chooses between long and short distance work and is shown
+      only the jobs inside their own radius, so the feed is not "every job"
+      filtered by the client — it is a different list for every partner,
+      computed by the server.
   - name: orders
     description: |
       The agreement between a customer and a shop: placed from a cart, moved
@@ -2942,6 +2949,467 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/partner:
+    post:
+      tags: [partner]
+      summary: Sign up to carry orders
+      description: |
+        D1 from the partner's side: a delivery partner may provide delivery
+        anywhere in Bangladesh, so there is no area to register in and nothing
+        to approve against a map. Where they can work is decided every time
+        they report a location.
+
+        Registering twice is not an error; it is somebody tapping a button
+        again, and they get the partner they already are.
+      parameters:
+        - { name: lang, in: query, required: false, description: "`en` for English; anything else is Bengali.", schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, phone]
+              properties:
+                name: { type: string }
+                phone: { type: string }
+                vehicle:
+                  type: string
+                  description: Free text — "bicycle", "motorcycle", "van". Not an enum, because the list would be wrong within a month.
+      responses:
+        "201":
+          description: The partner record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryPartner" }
+        "400":
+          description: The name or phone number is missing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      tags: [partner]
+      summary: The caller's own partner record
+      parameters:
+        - { name: lang, in: query, required: false, description: "`en` for English; anything else is Bengali.", schema: { type: string } }
+      responses:
+        "200":
+          description: The partner record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryPartner" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/availability:
+    put:
+      tags: [partner]
+      summary: Go on or off shift
+      description: |
+        `busy` is not something a partner declares: it is what being at the
+        concurrent limit is called, and it resolves itself when they finish a
+        delivery. Letting somebody set it by hand would give them a way to stay
+        in the pool while refusing every offer.
+      parameters:
+        - { name: lang, in: query, required: false, description: "`en` for English; anything else is Bengali.", schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [availability]
+              properties:
+                availability: { type: string, enum: [offline, available] }
+      responses:
+        "200":
+          description: The partner record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryPartner" }
+        "400":
+          description: That is not an availability
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/preference:
+    put:
+      tags: [partner]
+      summary: Choose long-distance, short-distance, or both (D4)
+      parameters:
+        - { name: lang, in: query, required: false, description: "`en` for English; anything else is Bengali.", schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preference]
+              properties:
+                preference: { type: string, enum: [short, long, any] }
+      responses:
+        "200":
+          description: The partner record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryPartner" }
+        "400":
+          description: That is not a distance choice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/location:
+    put:
+      tags: [partner]
+      summary: Report where the partner is
+      description: |
+        Called often, as a rider moves. It writes one row and nothing else: the
+        feed is computed on read rather than pushed on write, because a partner
+        who is driving is not looking at their phone.
+      parameters:
+        - { name: lang, in: query, required: false, description: "`en` for English; anything else is Bengali.", schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lat, lng]
+              properties:
+                lat: { type: number, format: double }
+                lng: { type: number, format: double }
+      responses:
+        "200":
+          description: The partner record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryPartner" }
+        "400":
+          description: The location is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/feed:
+    get:
+      tags: [partner]
+      summary: The deliveries this partner should see (ALG-08)
+      description: |
+        Bounded, nearest-pickup first, and filtered by the partner's own
+        distance choice (D4). A client that filtered a global list by its own
+        radius would be deciding visibility, which 2.9 forbids, and would need a
+        copy of `dispatch.partner_radius` to do it.
+
+        An empty list carries a `reason`: `offline`, `at_capacity` or
+        `nothing_nearby`. A partner who forgot to go online should be told that,
+        not shown nothing and left to wonder.
+      parameters:
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The feed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PartnerFeed" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/jobs:
+    get:
+      tags: [partner]
+      summary: The partner's own deliveries
+      parameters:
+        - { name: live, in: query, required: false, description: "`true` for what they are carrying now.", schema: { type: string, enum: ["true"] } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of deliveries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryJobList" }
+        "400":
+          description: The paging is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/jobs/{jobId}/accept:
+    post:
+      tags: [partner]
+      summary: Take the delivery that was offered
+      description: |
+        Two partners cannot be assigned the same order. The domain refuses a
+        partner moving a job they do not hold; the repository refuses the write
+        when the job has moved since it was read. The second rider gets a `409`.
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryJob" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such delivery, or not a partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Somebody else has taken it, or the offer expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/jobs/{jobId}/decline:
+    post:
+      tags: [partner]
+      summary: Pass on the delivery that was offered
+      description: It goes back on the board, and counts against the partner's acceptance rate.
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryJob" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such delivery, or not a partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: It is no longer offered to this partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/jobs/{jobId}/collect:
+    post:
+      tags: [partner]
+      summary: The rider has the goods
+      description: Moves the order to `picked_up` as well, through OrderContract.Advance.
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryJob" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such delivery, or not a partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The delivery cannot move that way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/jobs/{jobId}/deliver:
+    post:
+      tags: [partner]
+      summary: The rider has handed them over
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryJob" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such delivery, or not a partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The delivery cannot move that way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/jobs/{jobId}/fail:
+    post:
+      tags: [partner]
+      summary: The delivery could not be completed
+      description: |
+        A reason is required. A rider abandoning a delivery owes the customer
+        and the shop an explanation — it is the only thing either of them will
+        have to go on.
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryJob" }
+        "400":
+          description: No reason was given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such delivery, or not a partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The delivery cannot move that way
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/dispatch/sweep:
+    post:
+      tags: [partner]
+      summary: Run the dispatch heartbeat
+      description: |
+        Two passes: expire the offers nobody answered, then offer the jobs
+        sitting on the board to somebody. Both are needed — without the first a
+        job stalls behind a rider who put their phone away, and without the
+        second a declined job would wait forever.
+
+        An endpoint rather than a background goroutine, so the sweep runs where
+        somebody can see it: an operator can trigger it, a cron can call it, and
+        it is safe to run twice. A goroutine inside the API would run once per
+        replica and be invisible when it stopped.
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: What the sweep did
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [expired, offered]
+                properties:
+                  expired: { type: integer, description: Offers nobody answered, now back on the board }
+                  offered: { type: integer, description: Waiting jobs put to a partner this pass }
+        "400":
+          description: The limit is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The sweep could not run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2951,6 +3419,109 @@ components:
       description: Short-lived access token. See docs/build/phases/P04.md.
 
   schemas:
+    DeliveryPartner:
+      type: object
+      required: [id, name, phone, availability, availability_label, preference, preference_label, lat, lng, carrying, acceptance_percent]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        phone: { type: string }
+        vehicle: { type: string }
+        availability: { type: string, enum: [offline, available, busy] }
+        availability_label: { type: string, example: "কাজের জন্য প্রস্তুত" }
+        preference:
+          type: string
+          enum: [short, long, any]
+          description: D4's distance choice. `any` is the default — a partner who has not chosen has not chosen to exclude anything.
+        preference_label: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        carrying: { type: integer, description: How many live deliveries they hold. }
+        acceptance_percent:
+          type: integer
+          description: |
+            The share of offers taken, as a whole number. A partner with no
+            offers yet reads 100 rather than 0: the alternative punishes
+            somebody for being new, which is the surest way to have no new
+            partners.
+
+    DeliveryPlace:
+      type: object
+      required: [name, lat, lng]
+      properties:
+        name: { type: string }
+        phone: { type: string }
+        single_line: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+
+    DeliveryJob:
+      type: object
+      required: [id, order_id, code, status, status_label, live, band, band_label, distance_m, distance, pickup, destination]
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        code:
+          type: string
+          description: The order's short reference, so a rider and a shopkeeper say the same six characters to each other.
+        status:
+          type: string
+          enum: [waiting, offered, assigned, collected, delivered, failed, cancelled]
+          description: |
+            Deliberately not the order's status. An order is the customer's view
+            of the thing; a job is the platform's view of getting it moved, and
+            they diverge — an order sitting at `ready` may have been offered to
+            four partners and declined by three.
+        status_label: { type: string }
+        live: { type: boolean }
+        band:
+          type: string
+          enum: [short, long, beyond]
+          description: |
+            D4's classification, computed once against the area's ceilings when
+            the job was created. `beyond` is past even the long ceiling and is
+            offered to everybody working rather than to nobody — an order that
+            no preference covers is an order that sits there.
+        band_label: { type: string }
+        distance_m: { type: number, format: double, description: Pickup to door. }
+        distance: { type: string, example: "৩.২ কিমি" }
+        to_pickup_m: { type: number, format: double, description: How far the rider is from the counter. }
+        to_pickup: { type: string }
+        pickup: { $ref: "#/components/schemas/DeliveryPlace" }
+        destination: { $ref: "#/components/schemas/DeliveryPlace" }
+        reason: { type: string }
+        seconds_left:
+          type: integer
+          description: |
+            How long is left to answer an offer, from the server's clock. A
+            rider's phone clock is wrong often enough that a countdown from it
+            would expire at the wrong moment, which on an offer is the
+            difference between a job and a wasted trip.
+
+    PartnerFeed:
+      type: object
+      required: [partner, jobs, radius_m]
+      properties:
+        partner: { $ref: "#/components/schemas/DeliveryPartner" }
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/DeliveryJob" }
+        radius_m: { type: number, format: double, description: "`dispatch.partner_radius` where this partner is standing." }
+        reason:
+          type: string
+          enum: [offline, at_capacity, nothing_nearby]
+          description: Why the list is empty, when it is.
+        notice: { type: string, description: The sentence to show, composed by the server. }
+
+    DeliveryJobList:
+      type: object
+      required: [jobs, total]
+      properties:
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/DeliveryJob" }
+        total: { type: integer }
+
     OrderStatus:
       type: string
       description: |

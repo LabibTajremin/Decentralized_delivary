@@ -1,7 +1,7 @@
 # BUILD STATE
-last_updated: 2026-09-15T00:00:00Z
-current_phase: P12
-current_task: P12.T01
+last_updated: 2026-09-16T00:00:00Z
+current_phase: P13
+current_task: P13.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -20,7 +20,8 @@ P08 DONE       discovery — local visibility (D1), stepwise expansion with a co
 P09 DONE       cart — single merchant, revalidation against live prices and hours, invalidation on address change (D3)
 P10 DONE       pricing — ALG-05 banding exact at the edges, the D2 surcharge, free delivery; one implementation for card and receipt
 P11 DONE       order — one transition table for four parties, idempotent placement, frozen prices, the free cancellation window
-P12..P20 TODO
+P12 DONE       dispatch — nationwide partners (D1), D4's distance choice in the query, ALG-04 rounds with a clock, ALG-08 feed, the sweep
+P13..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -94,11 +95,10 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P12 — Dispatch. ALG-04 partner assignment on a min-heap scored by distance,
-load and acceptance rate; D4's long/short distance choice; ALG-08 the partner's
-job feed bounded by dispatch.partner_radius. It moves an order from ready to
-picked_up to delivered through OrderContract.Advance, which is the way in the
-order module left for it. Depends on P11 and P02.
+P13 — Payment. Cash on delivery is already the path an order takes end to end;
+this phase adds the rest. The order module left the way in: `MarkPaid` and
+`MarkPaymentFailed` on OrderContract, and the `pending_payment → placed`
+transition that only the system may make. Depends on P11.
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -117,7 +117,7 @@ order module left for it. Depends on P11 and P02.
 
 ## Coverage
 backend total: 100.0%
-last verified: 2026-09-15 (local PostGIS 3.4)
+last verified: 2026-09-16 (local PostGIS 3.4)
 exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (ADR 0006)
 
 ## Notes for next session
@@ -236,3 +236,34 @@ P11.T08 DONE  OrderContract — MarkPaid, MarkPaymentFailed, Advance restricted 
 P11.T09 DONE  transport — customer, shop and admin surfaces; MerchantContract gained OwnedBy
 P11.T10 DONE  unit, integration and E2E tests at 100%; two real bugs found (see docs/technical/order.md)
 P11.T11 DONE  docs/technical/order.md
+
+## P12 tasks
+P12.T01 DONE  domain — Partner (D1: no area, no approval), Availability, Preference (D4), Band
+P12.T02 DONE  domain — Job: the lifecycle, the offer clock, passed_by, giving up before collection
+P12.T03 DONE  domain — ALG-04 assignment on a min-heap; ALG-08 the bounded feed
+P12.T04 DONE  external/ seams to order, geo and config
+P12.T05 DONE  OfferUseCase — rounds not broadcasts, idempotent on the order, the two-pass sweep
+P12.T06 DONE  PartnerUseCase — shift, location, feed, and the six moves a rider makes
+P12.T07 DONE  migration 0009, PostGIS repository: D4 in the WHERE, compare-and-set on every job write
+P12.T08 DONE  DispatchContract + the order module's external/dispatch: ready offers, cancellation withdraws
+P12.T09 DONE  transport — twelve partner routes and the admin sweep; OpenAPI paths and schemas
+P12.T10 DONE  unit, integration and E2E tests at 100%; three real holes found (see the notes below)
+P12.T11 DONE  docs/technical/dispatch.md
+
+## What P12's tests found
+
+Three holes the fakes could not see, all found by driving the real thing:
+
+- **A declined job was stranded.** `Sweep` expired dead offers and put them back
+  on the board, and nothing ever took them off it again — a decline is the one
+  way onto the board that no partner's own action reverses. The sweep now has a
+  second pass that re-offers waiting jobs, which is why a job carries its own
+  area codes: the settings that govern it are per-area (D2).
+- **A rider who gave up before collecting failed the customer's order.** The
+  food was still on the shop's counter. `Fail` before collection now returns the
+  job to the board and leaves the order alone; only a rider carrying the food
+  can fail a delivery.
+- **`passed_by` could deadlock a one-rider town.** Skipping the rider who just
+  declined is right while somebody else is standing by, and wrong when nobody
+  is: the job would never be offered again. The round now falls back to the
+  full pool when the filtered one is empty.

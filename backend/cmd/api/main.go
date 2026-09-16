@@ -30,6 +30,9 @@ import (
 	cfghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/config/transport/http"
 	discoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/application"
 	discohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/discovery/transport/http"
+	dispatchapp "github.com/rootlogic-lab/delivery/backend/internal/modules/dispatch/application"
+	dispatchpg "github.com/rootlogic-lab/delivery/backend/internal/modules/dispatch/infrastructure/persistence/postgres"
+	dispatchhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/dispatch/transport/http"
 	geoapp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/application"
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
@@ -283,10 +286,35 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// case, so "who may do this" cannot drift between four endpoints. Prices
 	// are re-quoted on the way in rather than taken from the cart: a price the
 	// customer was shown is not a price the system promised.
+	// Dispatch (P12). Built before order because order hands it a job the
+	// moment a shop marks food ready; dispatch in turn moves the order through
+	// OrderContract.Advance, which is the way in the order module left for it.
+	// The two are wired as a cycle of *services*, not of packages: each reaches
+	// the other only through its external/ seam (2.5).
+	dispatchRepo := dispatchpg.NewFromPool(pool)
 	orderRepo := orderpg.NewFromPool(pool)
 	orderTransitions := orderapp.NewTransitionUseCase(
-		orderRepo, merchantService, configService, systemClock, ids,
+		orderRepo, merchantService, configService, nil, systemClock, ids,
 	)
+	orderService := orderapp.NewService(orderRepo, orderTransitions)
+
+	dispatchOffers := dispatchapp.NewOfferUseCase(dispatchRepo, configService, systemClock, ids)
+	dispatchService := dispatchapp.NewService(dispatchRepo, dispatchOffers)
+	// The order module's half of the pair, filled in once dispatch exists.
+	orderTransitions.UseDispatch(dispatchService)
+
+	dispatchhttp.NewHandler(
+		dispatchapp.NewPartnerUseCase(
+			dispatchRepo, orderService, geoService, configService, systemClock, ids,
+		),
+		dispatchOffers,
+		dispatchhttp.Guard(authenticator.Authenticated()),
+		dispatchhttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+	).Register(mux)
 	orderhttp.NewHandler(
 		orderapp.NewPlaceUseCase(
 			orderRepo, ordercodes.New(), cartService, pricingService,

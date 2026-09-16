@@ -348,3 +348,69 @@ func TestTheContract(t *testing.T) {
 		}
 	})
 }
+
+// The order tells dispatch when a shop marks food ready, so a rider's phone
+// buzzes while it is hot — and tells it again when an order goes away, so
+// nobody rides to a shop for nothing.
+func TestTheOrderTellsDispatch(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	placed := place(t, r, "")
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	if len(r.dispatch.offered) != 0 {
+		t.Fatalf("dispatch was told too early: %v", r.dispatch.offered)
+	}
+
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	if len(r.dispatch.offered) != 1 || r.dispatch.offered[0] != placed.ID {
+		t.Fatalf("offered = %v", r.dispatch.offered)
+	}
+
+	// An admin calling it off takes the job back off the board.
+	move(t, r, placed.ID, domain.StatusCancelled, "customer phoned", operator())
+	if len(r.dispatch.withdrew) != 1 || r.dispatch.withdrew[0] != placed.ID {
+		t.Fatalf("withdrew = %v", r.dispatch.withdrew)
+	}
+
+	// A rejection withdraws too — the shop said no, so there is nothing to
+	// carry.
+	second := place(t, r, "")
+	move(t, r, second.ID, domain.StatusRejected, "কাচ্চি শেষ", shopkeeper())
+	if len(r.dispatch.withdrew) != 2 {
+		t.Fatalf("withdrew = %v", r.dispatch.withdrew)
+	}
+	_ = ctx
+}
+
+// A dispatch outage must not stop a shop marking food ready. An order sitting
+// at `ready` with no rider is visible to an operator and recoverable by a
+// sweep; an order the shop could not mark ready at all is a kitchen with
+// cooling food and no way to say so.
+func TestADispatchOutageDoesNotBlockTheShop(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	r.dispatch.err = errBoom
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	view := move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	if view.Status != "ready" {
+		t.Fatalf("view = %+v", view)
+	}
+}
+
+// An order module wired without dispatch — which is how cmd/api builds it
+// before the loop is closed — must not panic on a transition.
+func TestATransitionWithNoDispatchWired(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	r.transitions.UseDispatch(nil)
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	if view := move(t, r, placed.ID, domain.StatusReady, "", shopkeeper()); view.Status != "ready" {
+		t.Fatalf("view = %+v", view)
+	}
+}

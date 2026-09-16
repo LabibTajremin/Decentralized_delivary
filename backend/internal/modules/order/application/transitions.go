@@ -7,6 +7,7 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/domain"
 	cfg "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/config"
+	dispatchx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/dispatch"
 	merchantx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/merchant"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
@@ -23,6 +24,7 @@ type TransitionUseCase struct {
 	repo     ports.Repository
 	merchant merchantx.Service
 	config   cfg.Service
+	dispatch dispatchx.Service
 	clock    clock.Clock
 	ids      id.Generator
 }
@@ -32,11 +34,25 @@ func NewTransitionUseCase(
 	repo ports.Repository,
 	merchants merchantx.Service,
 	config cfg.Service,
+	dispatcher dispatchx.Service,
 	c clock.Clock,
 	ids id.Generator,
 ) *TransitionUseCase {
-	return &TransitionUseCase{repo: repo, merchant: merchants, config: config, clock: c, ids: ids}
+	return &TransitionUseCase{
+		repo: repo, merchant: merchants, config: config,
+		dispatch: dispatcher, clock: c, ids: ids,
+	}
 }
+
+// UseDispatch supplies the dispatch seam after construction.
+//
+// A setter rather than a constructor argument because the two modules form a
+// service-level cycle: order hands dispatch a job when a shop marks food ready,
+// and dispatch moves the order when a rider delivers it. Wiring them in one
+// direction and closing the loop here keeps that cycle in cmd/api, where the
+// wiring lives, rather than turning it into a package cycle the compiler would
+// refuse.
+func (uc *TransitionUseCase) UseDispatch(d dispatchx.Service) { uc.dispatch = d }
 
 // Caller is who is asking, and on whose behalf.
 type Caller struct {
@@ -98,7 +114,42 @@ func (uc *TransitionUseCase) Execute(ctx context.Context, orderID string, to dom
 	}
 	order.Events[len(order.Events)-1] = event
 
+	uc.tellDispatch(ctx, order, reason)
+
 	return uc.render(ctx, order, caller, now), nil
+}
+
+// tellDispatch puts a job on the board, or takes one off it.
+//
+// Best-effort, and deliberately so. A dispatch outage must not stop a shop
+// marking food ready: an order sitting at `ready` with no rider is visible to
+// an operator and recoverable by a sweep, while an order the shop could not
+// mark ready at all is a kitchen with cooling food and no way to say so.
+func (uc *TransitionUseCase) tellDispatch(ctx context.Context, order domain.Order, reason string) {
+	if uc.dispatch == nil {
+		return
+	}
+	switch order.Status {
+	case domain.StatusReady:
+		_, _ = uc.dispatch.Offer(ctx, dispatchx.OfferRequest{
+			OrderID: order.ID, Code: order.Code,
+			Pickup: dispatchx.Place{
+				Name: order.Pickup.Name, Phone: order.Pickup.Phone,
+				SingleLine: order.Pickup.SingleLine,
+				Lat:        order.Pickup.Lat, Lng: order.Pickup.Lng,
+			},
+			Destination: dispatchx.Place{
+				Name: order.Destination.Recipient, Phone: order.Destination.Phone,
+				SingleLine: order.Destination.SingleLine,
+				Lat:        order.Destination.Lat, Lng: order.Destination.Lng,
+			},
+			DistanceM: order.Charges.DistanceM,
+			AreaCode:  order.Destination.AreaCode,
+		})
+	case domain.StatusCancelled, domain.StatusRejected, domain.StatusFailed:
+		_ = uc.dispatch.Withdraw(ctx, order.ID, reason)
+	default:
+	}
 }
 
 // CancelStatus reports whether the customer may still call an order off,

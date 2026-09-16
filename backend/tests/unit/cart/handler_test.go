@@ -58,6 +58,37 @@ func TestGetCartWithNothingInIt(t *testing.T) {
 	}
 }
 
+// And a customer who has one gets it back, revalidated on the read: the GET is
+// the screen the app opens on, so it is the one that has to be right.
+func TestGetCartWithSomethingInIt(t *testing.T) {
+	r := withBurger()
+	mux := serve(r, "USR-1")
+	if status := call(t, mux, http.MethodPost, "/v1/cart/items",
+		`{"merchant_id":"MER-1","kind":"item","target_id":"ITM-burger","quantity":2}`, nil); status != http.StatusOK {
+		t.Fatalf("add: status = %d", status)
+	}
+
+	var body struct {
+		MerchantName string `json:"merchant_name"`
+		Count        int    `json:"count"`
+		Lines        []struct {
+			Quantity  int `json:"quantity"`
+			LineTotal struct {
+				Display string `json:"display"`
+			} `json:"line_total"`
+		} `json:"lines"`
+	}
+	if status := call(t, mux, http.MethodGet, "/v1/cart?lang=en", "", &body); status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if body.MerchantName != "Star Kabab" || body.Count != 2 || len(body.Lines) != 1 {
+		t.Fatalf("body = %+v", body)
+	}
+	if body.Lines[0].LineTotal.Display == "" {
+		t.Error("the line total crossed the wire with no rendered string")
+	}
+}
+
 func TestTheWholeCartOverHTTP(t *testing.T) {
 	r := withBurger()
 	mux := serve(r, "USR-1")
