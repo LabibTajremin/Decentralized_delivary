@@ -1109,6 +1109,32 @@ func TestJobForOrder(t *testing.T) {
 	}
 }
 
+// PartnerOfUser is how payment's COD ledger resolves a signed-in rider to the
+// partner id dispatch already uses as the actor on a "delivered" event.
+func TestPartnerOfUserOverTheContract(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	var api contract.DispatchContract = r.service
+
+	rider := r.onShift(t, "USR-1", "Rafi", 23.746, 90.375, "")
+
+	if id, found, err := api.PartnerOfUser(ctx, "USR-1"); err != nil || !found || id != rider.ID {
+		t.Fatalf("id = %q, found = %v, err = %v", id, found, err)
+	}
+
+	// An account that never registered as a partner is not an error — most
+	// accounts are not partners.
+	if _, found, err := api.PartnerOfUser(ctx, "USR-CUSTOMER"); err != nil || found {
+		t.Fatalf("found = %v, err = %v", found, err)
+	}
+
+	broken := newRig()
+	broken.repo.partnerErr = errBoom
+	if _, _, err := broken.service.PartnerOfUser(ctx, "USR-1"); errs.CodeOf(err) != "dispatch_unavailable" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 // A job whose partner cannot be read is still a job. The caller gets the
 // delivery without the rider's details rather than an outage.
 func TestAJobWhosePartnerCannotBeRead(t *testing.T) {

@@ -28,6 +28,7 @@ import (
 	identityhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/transport/http"
 	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
 	orderhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/order/transport/http"
+	paymenthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/transport/http"
 	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
 )
 
@@ -85,6 +86,7 @@ func servedRoutes() []string {
 	routes = append(routes, carthttp.Patterns()...)
 	routes = append(routes, orderhttp.Patterns()...)
 	routes = append(routes, dispatchhttp.Patterns()...)
+	routes = append(routes, paymenthttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }
@@ -186,6 +188,12 @@ func TestPublicOperationsAreExplicitlyMarked(t *testing.T) {
 		// nothing here reads anyone's data.
 		"/v1/discovery/merchants":              true,
 		"/v1/discovery/merchants/{merchantId}": true,
+
+		// The one route in the whole API a person never calls. A gateway's own
+		// servers reach it, authenticated by the payload's own signature
+		// (WebhookUseCase.Handle) rather than a bearer token — the caller has
+		// no account to hold one.
+		"/v1/payments/manual/webhook": true,
 	}
 	for path, ops := range loadSpec(t).Paths {
 		for method, op := range ops {

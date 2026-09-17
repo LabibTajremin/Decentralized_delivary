@@ -47,3 +47,15 @@ func (s *Service) JobForOrder(ctx context.Context, orderID string) (contract.Job
 	}
 	return s.offers.toContract(ctx, job), true, nil
 }
+
+// PartnerOfUser resolves a signed-in account to its own partner id.
+func (s *Service) PartnerOfUser(ctx context.Context, userID string) (string, bool, error) {
+	partner, found, err := s.repo.PartnerOfUser(ctx, userID)
+	if err != nil {
+		return "", false, storageError(err)
+	}
+	if !found {
+		return "", false, nil
+	}
+	return partner.ID, true, nil
+}

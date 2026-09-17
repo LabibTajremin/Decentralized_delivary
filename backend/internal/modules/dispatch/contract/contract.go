@@ -85,4 +85,13 @@ type DispatchContract interface {
 	// JobForOrder returns the delivery for an order, if there is one. The bool
 	// is false before an order is ready, which is most of its life.
 	JobForOrder(ctx context.Context, orderID string) (Job, bool, error)
+
+	// PartnerOfUser resolves a signed-in account to its own partner id, or
+	// false when the account is not a partner.
+	//
+	// Payment's COD ledger is keyed on the partner id dispatch already uses —
+	// the same one recorded as the actor on an order's "delivered" event — so a
+	// rider asking "what do I owe" needs this one lookup rather than a second
+	// copy of the partner registry.
+	PartnerOfUser(ctx context.Context, userID string) (partnerID string, found bool, err error)
 }

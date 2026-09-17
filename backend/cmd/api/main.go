@@ -50,6 +50,11 @@ import (
 	ordercodes "github.com/rootlogic-lab/delivery/backend/internal/modules/order/infrastructure/codes"
 	orderpg "github.com/rootlogic-lab/delivery/backend/internal/modules/order/infrastructure/persistence/postgres"
 	orderhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/order/transport/http"
+	paymentapp "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/application"
+	paymentorderx "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/external/order"
+	paymentmanual "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/infrastructure/gateway/manual"
+	paymentpg "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/infrastructure/persistence/postgres"
+	paymenthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/transport/http"
 	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
 	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
 	userpg "github.com/rootlogic-lab/delivery/backend/internal/modules/user/infrastructure/persistence/postgres"
@@ -303,6 +308,26 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// The order module's half of the pair, filled in once dispatch exists.
 	orderTransitions.UseDispatch(dispatchService)
 
+	// Payment (P13). The isolated module (2.6): it talks to order and dispatch
+	// only through their own contracts, mirrored into payment's own
+	// primitives at the seam, and exposes only PaymentContract to everyone
+	// else. The manual gateway is a stand-in until a real provider is chosen —
+	// it refuses to be constructed in production, the same guarantee
+	// identity's log SMS sender makes.
+	paymentRepo := paymentpg.NewFromPool(pool)
+	manualGateway, err := paymentmanual.New(cfg.PaymentWebhookSecret, cfg.IsProduction())
+	if err != nil {
+		return nil, err
+	}
+	paymentCollections := paymentapp.NewCollectionUseCase(
+		paymentRepo, dispatchService, systemClock, ids,
+	)
+	paymentRefunds := paymentapp.NewRefundUseCase(paymentRepo, manualGateway, systemClock)
+	paymentService := paymentapp.NewService(paymentRepo, paymentCollections, paymentRefunds)
+	// The order module's half of the payment pair, filled in once payment
+	// exists — the same service-level cycle as order and dispatch above.
+	orderTransitions.UsePayment(paymentService)
+
 	dispatchhttp.NewHandler(
 		dispatchapp.NewPartnerUseCase(
 			dispatchRepo, orderService, geoService, configService, systemClock, ids,
@@ -332,6 +357,22 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		func(r *http.Request, userID string) ([]string, error) {
 			return merchantService.OwnedBy(r.Context(), userID)
 		},
+	).Register(mux)
+
+	orderOfPayment := paymentorderx.New(orderService)
+	paymenthttp.NewHandler(
+		paymentapp.NewCheckoutUseCase(paymentRepo, manualGateway, orderOfPayment, systemClock, ids),
+		paymentapp.NewWebhookUseCase(paymentRepo, manualGateway, orderOfPayment, systemClock),
+		paymentCollections,
+		paymentRefunds,
+		paymentapp.NewReadUseCase(paymentRepo),
+		paymenthttp.Guard(authenticator.Authenticated()),
+		paymenthttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+		!cfg.IsProduction(),
 	).Register(mux)
 
 	// Demo imagery is served only outside production, so generated placeholder

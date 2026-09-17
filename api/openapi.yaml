@@ -61,6 +61,17 @@ tags:
     description: |
       Administrative geography and spatial queries. Every distance in the system
       comes from here, so pricing, dispatch and the client all quote one number.
+  - name: payments
+    description: |
+      Taking money through a gateway, and the ledger of cash a delivery partner
+      is carrying. This is payment's whole public surface — everything else the
+      module does happens through the order module's own transitions, never a
+      route a person calls.
+
+      Isolated per ADR (05-architecture.md 2.6): built in Go today, ready to
+      become a separate .NET service without any other module noticing, which
+      is why every shape here is a primitive and nothing is shared with
+      orders' own schemas.
 
 paths:
   /healthz:
@@ -3410,7 +3421,323 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/payments/checkout:
+    post:
+      tags: [payments]
+      summary: Start, or resume, paying for an order online
+      description: |
+        Idempotent on the order id, the same sense as everywhere else a
+        customer might tap twice on a slow connection: a checkout already in
+        progress for this order is returned again rather than started a
+        second time. A previous attempt that already failed does not block a
+        new one — that is what a retry is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id]
+              properties:
+                order_id: { type: string }
+      responses:
+        "200":
+          description: The checkout, new or resumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checkout" }
+        "400":
+          description: The request is malformed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such order, or it is not the caller's
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: That order is not cash-free and waiting for payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The gateway or payment storage could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/payments/{orderId}:
+    get:
+      tags: [payments]
+      summary: The caller's own payment for an order
+      description: |
+        What a customer's app polls after a checkout redirect, to learn
+        whether the gateway has answered yet.
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such payment, or it is not the caller's order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/payments/manual/webhook:
+    post:
+      tags: [payments]
+      summary: Receive a gateway callback
+      description: |
+        Reached by a payment gateway's own servers, never by a person — there
+        is no account to hold a bearer token, so this is authenticated by the
+        payload's own signature (`X-Webhook-Signature`) instead.
+
+        Idempotent by construction: a gateway's retry policy guarantees
+        at-least-once delivery, never exactly-once, and a payment leaves
+        `pending` exactly once no matter how many times the same event
+        arrives. A replay after the first success is answered the same way
+        the first one was, with nothing written twice.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference, gateway_ref, succeeded, amount_minor]
+              properties:
+                reference:     { type: string, description: The merchant reference this module minted at checkout }
+                gateway_ref:   { type: string, description: The gateway's own transaction id }
+                succeeded:     { type: boolean }
+                reason:        { type: string, description: Required when succeeded is false }
+                amount_minor:  { type: integer, format: int64, description: What the gateway confirms it collected }
+      responses:
+        "204":
+          description: Applied
+        "400":
+          description: The webhook could not be verified or decoded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: That reference does not match a payment this module started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The confirmed amount does not match what was asked for
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/partner/cod:
+    get:
+      tags: [payments]
+      summary: The caller's own cash-on-delivery ledger
+      description: |
+        What a rider is carrying: the total still owed for delivered cash
+        orders, the total already handed over, and the collections behind
+        each figure.
+      responses:
+        "200":
+          description: The ledger
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ledger" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not registered as a delivery partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/payments/{orderId}:
+    get:
+      tags: [payments]
+      summary: Any order's payment
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/payments/{orderId}/refund:
+    post:
+      tags: [payments]
+      summary: Give a captured payment back
+      description: |
+        Idempotent: refunding an already-refunded payment succeeds without
+        asking the gateway a second time. The primitive P16's refund
+        workflow calls through PaymentContract; this route is the same
+        operation for an operator working a case by hand.
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: The payment, now refunded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "400":
+          description: A reason is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Only a captured payment can be refunded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The gateway or payment storage could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/payments/cod/{partnerId}:
+    get:
+      tags: [payments]
+      summary: A partner's cash-on-delivery ledger
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The ledger
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ledger" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/payments/cod/{partnerId}/reconcile:
+    post:
+      tags: [payments]
+      summary: Mark a partner's held cash as remitted
+      description: |
+        Every collection id in the batch must belong to this partner and
+        still be held, or none of them move — reconciled inside one
+        transaction, so a partial remittance can never leave the ledger
+        claiming half a handover happened when an operator meant all of it.
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [collection_ids, reference]
+              properties:
+                collection_ids: { type: array, items: { type: string }, minItems: 1 }
+                reference:      { type: string, description: A receipt or deposit-slip reference for the handover }
+      responses:
+        "200":
+          description: The ledger, after reconciling
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ledger" }
+        "400":
+          description: No collections were named, or no reference was given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: One of those collections is not this partner's to remit, or has already been remitted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
+
   securitySchemes:
     bearerAuth:
       type: http
@@ -3419,6 +3746,57 @@ components:
       description: Short-lived access token. See docs/build/phases/P04.md.
 
   schemas:
+    Checkout:
+      type: object
+      required: [payment_id, order_id, status, status_label, amount]
+      properties:
+        payment_id:   { type: string }
+        order_id:     { type: string }
+        status:       { type: string, enum: [pending, captured, failed, refunded] }
+        status_label: { type: string }
+        amount:       { $ref: "#/components/schemas/Money" }
+        redirect_url:
+          type: string
+          description: Where the customer's app sends them to pay. Empty on a resumed checkout whose attempt never recorded one.
+
+    Payment:
+      type: object
+      required: [id, order_id, status, status_label, amount]
+      properties:
+        id:           { type: string }
+        order_id:     { type: string }
+        status:       { type: string, enum: [pending, captured, failed, refunded] }
+        status_label: { type: string }
+        amount:       { $ref: "#/components/schemas/Money" }
+        reason:
+          type: string
+          description: Why it failed, or why it was refunded — empty otherwise.
+
+    Collection:
+      type: object
+      description: One cash-on-delivery order's worth of cash, from the moment a rider collects it to the moment it is remitted.
+      required: [id, order_id, amount, status, status_label]
+      properties:
+        id:             { type: string }
+        order_id:       { type: string }
+        amount:         { $ref: "#/components/schemas/Money" }
+        status:         { type: string, enum: [held, remitted] }
+        status_label:   { type: string }
+        remittance_ref: { type: string }
+
+    Ledger:
+      type: object
+      description: A delivery partner's cash position, always recomputed from their collections rather than kept as a stored figure.
+      required: [partner_id, outstanding, remitted, held]
+      properties:
+        partner_id:  { type: string }
+        outstanding: { $ref: "#/components/schemas/Money" }
+        remitted:    { $ref: "#/components/schemas/Money" }
+        held:
+          type: array
+          items: { $ref: "#/components/schemas/Collection" }
+          description: Held collections, oldest first — what a "please remit" screen lists.
+
     DeliveryPartner:
       type: object
       required: [id, name, phone, availability, availability_label, preference, preference_label, lat, lng, carrying, acceptance_percent]

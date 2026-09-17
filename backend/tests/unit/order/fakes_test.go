@@ -20,6 +20,7 @@ import (
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/domain"
+	paymentx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/payment"
 	usercontract "github.com/rootlogic-lab/delivery/backend/internal/modules/user/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
@@ -326,3 +327,26 @@ func (d *fakeDispatch) Withdraw(_ context.Context, orderID, _ string) error {
 	d.withdrew = append(d.withdrew, orderID)
 	return d.err
 }
+
+// fakePayment stands in for the payment module's delivery hook.
+//
+// The order tells payment when a rider marks a cash delivery complete, so the
+// COD ledger can record the cash that just changed hands. Best-effort, the
+// same as dispatch: a payment outage must not stop a rider marking a
+// delivery done.
+type fakePayment struct {
+	err       error
+	collected []collected
+}
+
+type collected struct {
+	orderID, partnerID string
+	amountMinor        int64
+}
+
+func (p *fakePayment) RecordCashCollection(_ context.Context, orderID, partnerID string, amountMinor int64) error {
+	p.collected = append(p.collected, collected{orderID, partnerID, amountMinor})
+	return p.err
+}
+
+var _ paymentx.Service = (*fakePayment)(nil)

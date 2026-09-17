@@ -188,6 +188,9 @@ func TestLoadDeploymentDefaults(t *testing.T) {
 	if cfg.JWTSigningKey == "" {
 		t.Error("development must get a signing key so the stack runs with no secrets")
 	}
+	if cfg.PaymentWebhookSecret == "" {
+		t.Error("development must get a webhook secret so the stack runs with no secrets")
+	}
 	if cfg.CORSAllowedOrigins != nil {
 		t.Errorf("CORSAllowedOrigins = %v, want nil for a mobile-only deployment", cfg.CORSAllowedOrigins)
 	}
@@ -264,8 +267,42 @@ func TestProductionRequiresRealSecrets(t *testing.T) {
 	if !strings.Contains(err.Error(), "JWT_SIGNING_KEY is required") {
 		t.Errorf("error = %v, want a missing signing key", err)
 	}
+	if !strings.Contains(err.Error(), "PAYMENT_WEBHOOK_SECRET is required") {
+		t.Errorf("error = %v, want a missing webhook secret", err)
+	}
 	if !strings.Contains(err.Error(), "PUBLIC_BASE_URL must use https in production") {
 		t.Errorf("error = %v, want the http base URL rejected in production", err)
+	}
+}
+
+// TestProductionRejectsTheDevelopmentWebhookSecret mirrors the signing-key
+// guard: a webhook secret an attacker can read out of this repository is a
+// secret that signs nothing.
+func TestProductionRejectsTheDevelopmentWebhookSecret(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"DATABASE_URL":           "postgres://x",
+		"REDIS_URL":              "redis://y",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"PAYMENT_WEBHOOK_SECRET": "insecure-development-webhook-secret-do-not-use",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "PAYMENT_WEBHOOK_SECRET must not be the development key") {
+		t.Errorf("error = %v, want the development webhook secret rejected", err)
+	}
+}
+
+func TestProductionRejectsAShortWebhookSecret(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"DATABASE_URL":           "postgres://x",
+		"REDIS_URL":              "redis://y",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"PAYMENT_WEBHOOK_SECRET": "tooshort",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "PAYMENT_WEBHOOK_SECRET") || !strings.Contains(err.Error(), "at least 32 characters") {
+		t.Errorf("error = %v, want a short webhook secret rejected", err)
 	}
 }
 
@@ -297,16 +334,17 @@ func TestProductionRejectsShortKey(t *testing.T) {
 
 func TestProductionAcceptsAProperDeployment(t *testing.T) {
 	cfg, err := config.Load(config.FromMap(map[string]string{
-		"APP_ENV":              "production",
-		"API_ADDR":             ":8080",
-		"PUBLIC_BASE_URL":      "https://api.goklay.com",
-		"DATABASE_URL":         "postgres://user:pass@db:5432/delivery",
-		"REDIS_URL":            "redis://cache:6379/0",
-		"JWT_SIGNING_KEY":      strings.Repeat("k", 48),
-		"JWT_ISSUER":           "goklay-prod",
-		"CORS_ALLOWED_ORIGINS": "https://admin.goklay.com",
-		"LOG_LEVEL":            "warn",
-		"SHUTDOWN_TIMEOUT":     "30s",
+		"APP_ENV":                "production",
+		"API_ADDR":               ":8080",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"DATABASE_URL":           "postgres://user:pass@db:5432/delivery",
+		"REDIS_URL":              "redis://cache:6379/0",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"JWT_ISSUER":             "goklay-prod",
+		"PAYMENT_WEBHOOK_SECRET": strings.Repeat("w", 40),
+		"CORS_ALLOWED_ORIGINS":   "https://admin.goklay.com",
+		"LOG_LEVEL":              "warn",
+		"SHUTDOWN_TIMEOUT":       "30s",
 	}))
 	if err != nil {
 		t.Fatalf("a complete production config must load: %v", err)
@@ -316,6 +354,9 @@ func TestProductionAcceptsAProperDeployment(t *testing.T) {
 	}
 	if cfg.JWTIssuer != "goklay-prod" || cfg.PublicBaseURL != "https://api.goklay.com" {
 		t.Errorf("config = %+v", cfg)
+	}
+	if cfg.PaymentWebhookSecret != strings.Repeat("w", 40) {
+		t.Errorf("PaymentWebhookSecret = %q", cfg.PaymentWebhookSecret)
 	}
 }
 

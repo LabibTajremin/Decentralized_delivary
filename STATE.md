@@ -1,7 +1,7 @@
 # BUILD STATE
-last_updated: 2026-09-16T00:00:00Z
-current_phase: P13
-current_task: P13.T01
+last_updated: 2026-09-17T00:00:00Z
+current_phase: P14
+current_task: P14.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -27,9 +27,10 @@ P16 is committed and pushed, run `./scripts/handover.sh`, tell the user P16 is
 done and P17 wants the model switched, and stop there. `CLAUDE.md` →
 "Which model runs which phase" has the whole procedure.
 
-Next action: **start P13 (Payment)** — read `docs/build/phases/P13.md`, write
-its task list into the `## P13 tasks` section below, and build it the way every
-other phase was built (`CLAUDE.md` → "How a phase goes").
+Next action: **start P14 (Tracking & notifications)** — read
+`docs/build/phases/P14.md`, write its task list into a `## P14 tasks` section
+below, and build it the way every other phase was built (`CLAUDE.md` → "How a
+phase goes").
 
 Before running anything:
 
@@ -72,7 +73,8 @@ P09 DONE       cart — single merchant, revalidation against live prices and ho
 P10 DONE       pricing — ALG-05 banding exact at the edges, the D2 surcharge, free delivery; one implementation for card and receipt
 P11 DONE       order — one transition table for four parties, idempotent placement, frozen prices, the free cancellation window
 P12 DONE       dispatch — nationwide partners (D1), D4's distance choice in the query, ALG-04 rounds with a clock, ALG-08 feed, the sweep
-P13..P20 TODO
+P13 DONE       payment — PaymentContract only (2.6), idempotent webhooks, atomic COD reconciliation
+P14..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -146,10 +148,9 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P13 — Payment. Cash on delivery is already the path an order takes end to end;
-this phase adds the rest. The order module left the way in: `MarkPaid` and
-`MarkPaymentFailed` on OrderContract, and the `pending_payment → placed`
-transition that only the system may make. Depends on P11.
+P14 — Tracking & notifications. Status and location streams deliver; SMS
+falls back when push fails. Depends on P11 (order event history) and P12
+(the dispatch job a rider's location updates against).
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -168,7 +169,7 @@ transition that only the system may make. Depends on P11.
 
 ## Coverage
 backend total: 100.0%
-last verified: 2026-09-16 (local PostGIS 3.4)
+last verified: 2026-09-17 (local PostGIS 3.4)
 exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (ADR 0006)
 
 ## Notes for next session
@@ -320,8 +321,46 @@ Three holes the fakes could not see, all found by driving the real thing:
   full pool when the filtered one is empty.
 
 ## P13 tasks
-(not yet written — author them from docs/build/phases/P13.md at the start of
-the phase, the way P08–P12 were, then work them in order)
+P13.T01 DONE  domain — Payment (gateway: pending/captured/failed/refunded), Collection (COD: held/remitted)
+P13.T02 DONE  ports — Repository, Gateway (the swappable adapter, 2.4)
+P13.T03 DONE  external/ seam to order (read, MarkPaid, MarkPaymentFailed); dispatch gains PartnerOfUser for payment's seam
+P13.T04 DONE  application — CheckoutUseCase, WebhookUseCase (idempotent), CollectionUseCase (record + reconcile), RefundUseCase
+P13.T05 DONE  migration 0010, Postgres repository, manual gateway adapter (refuses in production, like identity's LogSender)
+P13.T06 DONE  PaymentContract + service; order gains external/payment and a delivery hook for COD collection
+P13.T07 DONE  transport — checkout/read, the open signature-verified webhook, partner COD ledger, admin COD + refund; OpenAPI
+P13.T08 DONE  unit, integration and E2E tests at 100%; real bugs found (see the notes below)
+P13.T09 DONE  docs/technical/payment.md
+
+## What P13's tests found
+
+- **A per-item COD remit loop was a correctness bug caught before it ever
+  became a failing test.** The first design called `domain.Collection.Remit()`
+  and `repo.Save()` once per collection id in a batch; a validation failure on
+  item three would leave items one and two already written, with no way for
+  an operator to tell which succeeded. Redesigned around a single atomic
+  `repo.Remit(...)` transaction that either moves every id in the batch or
+  none of them.
+- **A refund could have moved money before validating the request.** An early
+  draft called the gateway before checking the reason was non-empty.
+  Reordered so the reason check, then the domain's own validation, both run
+  before the gateway is ever called.
+- **Postgres transaction poisoning (SQLSTATE 25P02) shaped a test's
+  structure.** A single integration test that induced a real unique-constraint
+  conflict and then tried to read again inside the same `pgx.Tx` failed for a
+  reason unrelated to the code under test — Postgres poisons a transaction
+  after any error inside it. Split into two separate tests, each with its own
+  transaction, matching the precedent already set in dispatch's suite.
+- **The structural-typing seam shortcut used elsewhere in this codebase does
+  not apply uniformly within one module.** `payment/external/dispatch` and
+  `order/external/payment` are bare interfaces the target's own concrete
+  `Service` satisfies directly, with no adapter — their target method's
+  signature already matched what the consumer needed. `payment/external/order`
+  keeps a real adapter that copies fields rather than aliasing, because 2.6
+  forbids sharing a type with any other module regardless of whether the
+  signatures happen to line up. Both choices are now backed by architecture
+  tests (`TestPaymentContractIsSelfContained`,
+  `TestPaymentDomainBorrowsNoOtherModulesTypes`) so the distinction does not
+  have to be rediscovered next time a seam is added.
 
 ## P17 pre-brief (for whoever picks up the Flutter work)
 

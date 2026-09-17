@@ -414,3 +414,90 @@ func TestATransitionWithNoDispatchWired(t *testing.T) {
 		t.Fatalf("view = %+v", view)
 	}
 }
+
+// The order tells payment when a rider marks a cash delivery complete, so the
+// COD ledger can record the cash that just changed hands — and only then: not
+// before delivery, and not for an order paid online, where a gateway webhook
+// settles things long before a rider is ever involved.
+func TestTheOrderTellsPaymentOnACashDelivery(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPickedUp, "", rider)
+	if len(r.payment.collected) != 0 {
+		t.Fatalf("payment was told before delivery: %+v", r.payment.collected)
+	}
+
+	move(t, r, placed.ID, domain.StatusDelivered, "", rider)
+	if len(r.payment.collected) != 1 {
+		t.Fatalf("collected = %+v, want one entry", r.payment.collected)
+	}
+	got := r.payment.collected[0]
+	if got.orderID != placed.ID || got.partnerID != "PTR-1" || got.amountMinor != placed.Total.Minor {
+		t.Fatalf("collected = %+v", got)
+	}
+}
+
+// An order paid online never tells payment about a cash collection — there
+// was never any cash for a rider to carry.
+func TestPaymentIsNotToldForAnOnlineOrder(t *testing.T) {
+	r := newRig()
+	view, err := r.place.Execute(context.Background(), "USR-1", application.PlaceRequest{
+		AddressID: "ADR-1", Payment: "online", Lang: "en",
+	})
+	if err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+	if err := r.service.MarkPaid(context.Background(), view.ID); err != nil {
+		t.Fatalf("MarkPaid: %v", err)
+	}
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, view.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, view.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, view.ID, domain.StatusReady, "", shopkeeper())
+	move(t, r, view.ID, domain.StatusPickedUp, "", rider)
+	move(t, r, view.ID, domain.StatusDelivered, "", rider)
+
+	if len(r.payment.collected) != 0 {
+		t.Fatalf("payment was told about an online order's delivery: %+v", r.payment.collected)
+	}
+}
+
+// A payment outage must not stop a rider marking a delivery done.
+func TestAPaymentOutageDoesNotBlockTheRider(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+	r.payment.err = errBoom
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPickedUp, "", rider)
+	view := move(t, r, placed.ID, domain.StatusDelivered, "", rider)
+	if view.Status != "delivered" {
+		t.Fatalf("view = %+v", view)
+	}
+}
+
+// An order module wired without payment — which is how cmd/api builds it
+// before the loop is closed — must not panic on a delivery.
+func TestATransitionWithNoPaymentWired(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	r.transitions.UsePayment(nil)
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPickedUp, "", rider)
+	if view := move(t, r, placed.ID, domain.StatusDelivered, "", rider); view.Status != "delivered" {
+		t.Fatalf("view = %+v", view)
+	}
+}

@@ -41,6 +41,9 @@ const EnvProduction = "production"
 // to work.
 const devSigningKey = "insecure-development-signing-key-do-not-use"
 
+// devWebhookSecret is PaymentWebhookSecret's equivalent outside production.
+const devWebhookSecret = "insecure-development-webhook-secret-do-not-use"
+
 // Config is the process configuration.
 type Config struct {
 	// Env is "development", "staging" or "production". Production turns on the
@@ -70,6 +73,12 @@ type Config struct {
 	// JWTIssuer is the `iss` claim, so tokens from another environment are
 	// rejected rather than silently accepted.
 	JWTIssuer string
+
+	// PaymentWebhookSecret signs and verifies inbound payment gateway webhooks.
+	// Same treatment as the JWT key and for the same reason: never stored in
+	// the database, where an admin with read access could forge a "payment
+	// captured" event for an order they did not pay for.
+	PaymentWebhookSecret string
 
 	// CORSAllowedOrigins lists the web origins allowed to call the API. Empty
 	// means none, which is correct for a mobile-only deployment.
@@ -245,8 +254,16 @@ func Load(lookup Lookup) (Config, error) {
 		if strings.HasPrefix(cfg.PublicBaseURL, "http://") {
 			l.errs = append(l.errs, "PUBLIC_BASE_URL must use https in production")
 		}
+		cfg.PaymentWebhookSecret = l.Required("PAYMENT_WEBHOOK_SECRET")
+		if cfg.PaymentWebhookSecret == devWebhookSecret {
+			l.errs = append(l.errs, "PAYMENT_WEBHOOK_SECRET must not be the development key in production")
+		}
+		if len(cfg.PaymentWebhookSecret) > 0 && len(cfg.PaymentWebhookSecret) < 32 {
+			l.errs = append(l.errs, "PAYMENT_WEBHOOK_SECRET must be at least 32 characters")
+		}
 	} else {
 		cfg.JWTSigningKey = l.String("JWT_SIGNING_KEY", devSigningKey)
+		cfg.PaymentWebhookSecret = l.String("PAYMENT_WEBHOOK_SECRET", devWebhookSecret)
 	}
 
 	return cfg, l.Err()

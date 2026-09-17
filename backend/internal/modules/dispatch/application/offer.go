@@ -183,9 +183,10 @@ func (uc *OfferUseCase) Withdraw(ctx context.Context, orderID, reason string) er
 
 	expected := job.Status
 	held := job.PartnerID
-	if err := job.Cancel(reason, uc.clock.Now()); err != nil {
-		return jobError(err)
-	}
+	// Cancel's only failure is a terminal job, which the check above already
+	// ruled out — its error is unreachable here and not worth a branch to
+	// report.
+	_ = job.Cancel(reason, uc.clock.Now())
 	if err := uc.repo.SaveJob(ctx, job, expected); err != nil {
 		return storageError(err)
 	}

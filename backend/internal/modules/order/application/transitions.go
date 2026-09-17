@@ -9,6 +9,7 @@ import (
 	cfg "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/config"
 	dispatchx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/dispatch"
 	merchantx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/merchant"
+	paymentx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/payment"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/id"
@@ -25,6 +26,7 @@ type TransitionUseCase struct {
 	merchant merchantx.Service
 	config   cfg.Service
 	dispatch dispatchx.Service
+	payment  paymentx.Service
 	clock    clock.Clock
 	ids      id.Generator
 }
@@ -53,6 +55,12 @@ func NewTransitionUseCase(
 // wiring lives, rather than turning it into a package cycle the compiler would
 // refuse.
 func (uc *TransitionUseCase) UseDispatch(d dispatchx.Service) { uc.dispatch = d }
+
+// UsePayment supplies the payment seam after construction, for the same
+// reason UseDispatch does: order hands payment a cash collection to record
+// when a rider marks a delivery complete, closing a service-level cycle that
+// would otherwise be a package cycle the compiler refuses.
+func (uc *TransitionUseCase) UsePayment(p paymentx.Service) { uc.payment = p }
 
 // Caller is who is asking, and on whose behalf.
 type Caller struct {
@@ -115,6 +123,7 @@ func (uc *TransitionUseCase) Execute(ctx context.Context, orderID string, to dom
 	order.Events[len(order.Events)-1] = event
 
 	uc.tellDispatch(ctx, order, reason)
+	uc.tellPayment(ctx, order, event)
 
 	return uc.render(ctx, order, caller, now), nil
 }
@@ -150,6 +159,24 @@ func (uc *TransitionUseCase) tellDispatch(ctx context.Context, order domain.Orde
 		_ = uc.dispatch.Withdraw(ctx, order.ID, reason)
 	default:
 	}
+}
+
+// tellPayment records a rider's cash the moment they say it changed hands.
+//
+// Only on delivery, and only for cash: a gateway payment is settled by its own
+// webhook, long before a rider is involved, and every other transition moves
+// no money at all. Best-effort, the same as tellDispatch — a payment outage
+// must not stop a rider marking a delivery done, and the ledger entry it would
+// have written is recoverable; a delivery a rider could not mark complete is
+// not.
+func (uc *TransitionUseCase) tellPayment(ctx context.Context, order domain.Order, event domain.Event) {
+	if uc.payment == nil {
+		return
+	}
+	if order.Status != domain.StatusDelivered || order.Payment != domain.PaymentCash {
+		return
+	}
+	_ = uc.payment.RecordCashCollection(ctx, order.ID, event.ActorID, order.Charges.Total.Minor())
 }
 
 // CancelStatus reports whether the customer may still call an order off,

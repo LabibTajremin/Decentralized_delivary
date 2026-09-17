@@ -207,6 +207,7 @@ func TestProductionRefusesToStartWithoutAnSMSGateway(t *testing.T) {
 		"APP_ENV=production",
 		"PUBLIC_BASE_URL=https://api.example.com",
 		"JWT_SIGNING_KEY=a-real-production-signing-key-at-least-32-chars",
+		"PAYMENT_WEBHOOK_SECRET=a-real-production-webhook-secret-at-least-32-chars",
 		"DATABASE_URL=postgres://delivery:delivery@127.0.0.1:5432/delivery?sslmode=disable",
 		"REDIS_URL=redis://127.0.0.1:6379/0",
 		"PATH=" + os.Getenv("PATH"),

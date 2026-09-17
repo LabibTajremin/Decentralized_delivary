@@ -294,3 +294,52 @@ func TestCrossModuleImportsGoThroughExternal(t *testing.T) {
 		}
 	}
 }
+
+// TestPaymentContractIsSelfContained enforces 2.6: payment is Go today and a
+// separate .NET service tomorrow, so its own public contract must not import
+// another module's package — every field on every DTO here is a primitive or
+// a type this package declares. That is what makes PaymentContract's shape
+// the wire contract, unchanged, on the day this module actually moves.
+func TestPaymentContractIsSelfContained(t *testing.T) {
+	root := backendRoot(t)
+	found := false
+	for _, f := range collectGoFiles(t, root) {
+		if f.pkgDir != "internal/modules/payment/contract" {
+			continue
+		}
+		found = true
+		for _, imp := range f.imports {
+			if dep, ok := internalImport(imp); ok {
+				t.Errorf("%s: payment/contract must import nothing internal beyond the standard "+
+					"library, found %q", f.path, dep)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("internal/modules/payment/contract was not found — has it moved?")
+	}
+}
+
+// TestPaymentDomainBorrowsNoOtherModulesTypes is the other half of 2.6:
+// payment's domain and application layers may reach another module only
+// through their own external/ seam, and that seam must copy what it reads
+// into types this module declares rather than aliasing the target module's
+// contract types directly — the convention every other module uses (see
+// order/external/dispatch.go), and the one payment does not get to, because a
+// type alias is still the other module's type at the wire boundary.
+func TestPaymentDomainBorrowsNoOtherModulesTypes(t *testing.T) {
+	root := backendRoot(t)
+	for _, f := range collectGoFiles(t, root) {
+		if !strings.HasPrefix(f.pkgDir, "internal/modules/payment/external/") {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(root, f.path))
+		if err != nil {
+			t.Fatalf("read %s: %v", f.path, err)
+		}
+		if strings.Contains(string(src), "= order"+"contract.") || strings.Contains(string(src), "= dispatch"+"contract.") {
+			t.Errorf("%s: a payment external/ seam type-aliases another module's contract type "+
+				"directly — copy the fields into a type this module owns instead", f.path)
+		}
+	}
+}
