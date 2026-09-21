@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
-import '../api/models/account.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
 import '../widgets/cards.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// `12__Saved Address` (`1:3665`).
 ///
@@ -71,7 +65,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final Dependencies dependencies = AppScope.of(context);
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.savedAddresses,
       body: ListenableBuilder(
         listenable: _runner,

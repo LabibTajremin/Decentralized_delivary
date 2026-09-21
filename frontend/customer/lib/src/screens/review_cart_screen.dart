@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
-import '../api/models/account.dart';
 import '../api/models/cart.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
 import '../widgets/cards.dart';
-import '../widgets/messages.dart';
-import '../widgets/receipt_view.dart';
-import '../widgets/scaffold.dart';
 
 /// `07__Review Cart` (`1:10108`).
 ///
@@ -101,7 +94,7 @@ class _ReviewCartScreenState extends State<ReviewCartScreen> {
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final Address? chosen = _address;
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.reviewCartTitle,
       body: ListenableBuilder(
         listenable: _runner,

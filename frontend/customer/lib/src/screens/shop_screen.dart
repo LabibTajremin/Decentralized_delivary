@@ -1,17 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
 import '../api/models/catalogue.dart';
 import '../api/models/discovery.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
 import '../widgets/cards.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// `03__Shop Details` (`1:8113`, and its pharmacy and grocery twins).
 ///
@@ -68,7 +63,7 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: widget.merchant.name,
       actions: <Widget>[
         GoklayTapTarget(

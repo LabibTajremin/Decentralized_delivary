@@ -3,18 +3,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:goklay_core/goklay_core.dart';
 import 'package:http/http.dart' as http;
 
-import 'api/models/auth.dart';
 import 'app_scope.dart';
 import 'dependencies.dart';
 import 'environment.dart';
 import 'l10n/customer_strings.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/otp_screen.dart';
-import 'screens/phone_sign_in_screen.dart';
 import 'screens/sign_in_options_screen.dart';
-import 'screens/splash_screen.dart';
-import 'screens/verification_result_screen.dart';
 
 /// The customer app.
 ///
@@ -143,8 +138,10 @@ class _CustomerRootState extends State<CustomerRoot> {
 
   @override
   Widget build(BuildContext context) {
+    final Dependencies dependencies = AppScope.of(context);
     return switch (_stage) {
-      _Stage.splash => SplashScreen(
+      _Stage.splash => GoklaySplashScreen(
+        session: dependencies.session,
         onReady: (bool isSignedIn) =>
             _to(isSignedIn ? _Stage.shell : _Stage.onboarding),
       ),
@@ -155,6 +152,7 @@ class _CustomerRootState extends State<CustomerRoot> {
         onContinue: () => _to(_Stage.phone),
       ),
       _Stage.phone => PhoneSignInScreen(
+        auth: dependencies.auth,
         onCodeSent: (String phone, OtpChallenge challenge) => setState(() {
           _phone = phone;
           _challenge = challenge;
@@ -162,6 +160,9 @@ class _CustomerRootState extends State<CustomerRoot> {
         }),
       ),
       _Stage.otp => OtpScreen(
+        auth: dependencies.auth,
+        session: dependencies.session,
+        role: AuthResult.customerRole,
         phone: _phone,
         challenge: _challenge,
         onVerified: (AuthResult _) => _to(_Stage.verified),

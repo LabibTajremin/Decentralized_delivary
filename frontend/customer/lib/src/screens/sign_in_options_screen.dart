@@ -19,6 +19,7 @@ class SignInOptionsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
+    final GoklayStrings core = GoklayLocalizations.of(context);
     return Scaffold(
       backgroundColor: GoklayColors.surfaceRaised,
       body: SafeArea(
@@ -28,7 +29,7 @@ class SignInOptionsScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               const Spacer(),
-              Text(strings.signInTitle, style: GoklayTextStyles.display),
+              Text(core.signInTitle, style: GoklayTextStyles.display),
               const SizedBox(height: GoklaySpacing.sm),
               Text(strings.signInSubtitle, style: GoklayTextStyles.body),
               const Spacer(),

@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
 import '../api/models/payment.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// Paying for an order placed `online`.
 ///
@@ -80,7 +75,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.paymentTitle,
       body: ListenableBuilder(
         listenable: _runner,

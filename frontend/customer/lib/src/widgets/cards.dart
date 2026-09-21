@@ -6,7 +6,6 @@ import '../api/models/catalogue.dart';
 import '../api/models/discovery.dart';
 import '../api/models/order.dart';
 import '../l10n/customer_strings.dart';
-import 'quantity_stepper.dart';
 
 /// A rounded white card, the one container shape the design uses.
 class GoklayCard extends StatelessWidget {

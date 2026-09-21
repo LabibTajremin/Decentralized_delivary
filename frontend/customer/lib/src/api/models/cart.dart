@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
 
 /// One chosen add-on or variant on a cart line.
 @immutable
@@ -85,38 +84,6 @@ class CartLine {
 
   /// Whether anything is wrong with this line.
   bool get hasIssue => issue != null;
-}
-
-/// One labelled row of the receipt.
-///
-/// The server sends the breakdown already computed and labelled, in order.
-/// The app prints the rows. It does not know which rows exist, what they mean,
-/// or how any of them were arrived at.
-@immutable
-class ReceiptRow {
-  /// Creates a receipt row.
-  const ReceiptRow({
-    required this.key,
-    required this.label,
-    required this.amount,
-  });
-
-  /// Reads the `ReceiptRow` object.
-  factory ReceiptRow.fromJson(Map<String, Object?> json) => ReceiptRow(
-    key: readString(json, 'key'),
-    label: readString(json, 'label'),
-    amount: Money.fromJson(readObject(json, 'amount')),
-  );
-
-  /// A stable code — `subtotal`, `delivery`, `expansion_surcharge` — for
-  /// styling a row differently. Never printed.
-  final String key;
-
-  /// The label to print, in the caller's language.
-  final String label;
-
-  /// The amount to print.
-  final Money amount;
 }
 
 /// What the cart costs.

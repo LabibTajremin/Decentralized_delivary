@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goklay_core/goklay_core.dart';
-import 'package:goklay_customer/src/api/models/account.dart';
 import 'package:goklay_customer/src/api/models/cart.dart';
 import 'package:goklay_customer/src/api/models/catalogue.dart';
 import 'package:goklay_customer/src/api/models/discovery.dart';
@@ -15,7 +14,6 @@ import 'package:goklay_customer/src/screens/place_order_screen.dart';
 import 'package:goklay_customer/src/screens/review_cart_screen.dart';
 import 'package:goklay_customer/src/screens/shop_screen.dart';
 import 'package:goklay_customer/src/widgets/cards.dart';
-import 'package:goklay_customer/src/widgets/messages.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
@@ -466,7 +464,7 @@ void main() {
         itemJson(),
         onAdded: () => added += 1,
       );
-      await tester.tap(find.bySemanticsLabel(bn.increaseQuantity));
+      await tester.tap(find.bySemanticsLabel(core.increaseQuantity));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'ঝাল কম');
       await tester.pumpAndSettle();
@@ -559,7 +557,7 @@ void main() {
       route('GET /v1/cart', (_) => cartJson());
       route('PUT /v1/cart/lines/lin-1', (_) => cartJson(quantity: 2));
       final Dependencies dependencies = await pumpCart(tester);
-      await tester.tap(find.bySemanticsLabel(bn.increaseQuantity));
+      await tester.tap(find.bySemanticsLabel(core.increaseQuantity));
       await tester.pumpAndSettle();
       expect(backend.to('/v1/cart/lines/lin-1'), hasLength(1));
       expect(find.text('2'), findsOneWidget);
@@ -586,7 +584,7 @@ void main() {
           (_) => errorBody('out_of_stock', 'স্টক শেষ'));
       backend.statuses['PUT /v1/cart/lines/lin-1'] = 409;
       final Dependencies dependencies = await pumpCart(tester);
-      await tester.tap(find.bySemanticsLabel(bn.increaseQuantity));
+      await tester.tap(find.bySemanticsLabel(core.increaseQuantity));
       await tester.pumpAndSettle();
       expect(find.text('স্টক শেষ'), findsOneWidget);
       expect(find.text('1'), findsOneWidget);

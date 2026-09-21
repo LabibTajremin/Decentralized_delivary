@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
 
 /// The rider carrying an order, present only while one is.
 @immutable

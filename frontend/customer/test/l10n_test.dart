@@ -7,22 +7,15 @@ import 'package:goklay_customer/src/l10n/customer_strings.dart';
 /// in the other cannot pass.
 List<String> allStrings(CustomerStrings s) => <String>[
   s.languageTag,
-  s.skip, s.next, s.getStarted,
+  s.skip, s.next,
   s.onboardingTitle1, s.onboardingBody1,
   s.onboardingTitle2, s.onboardingBody2,
-  s.onboardingTitle3, s.onboardingBody3,
-  s.signInTitle, s.signInSubtitle, s.continueWithPhone,
-  s.phoneLabel, s.phoneHint, s.sendCode,
-  s.otpTitle, s.otpSubtitle, s.verifyCode,
-  s.resendCountdown, s.resendCode,
-  s.verifiedTitle, s.verifiedBody,
-  s.verificationFailedTitle, s.verificationFailedBody, s.startOver,
+  s.onboardingTitle3, s.onboardingBody3, s.signInSubtitle, s.continueWithPhone,
   s.deliverTo, s.searchShops,
   s.typeAll, s.typeRestaurant, s.typeGrocery, s.typePharmacy,
   s.searchWider, s.noShops,
   s.menu, s.combos, s.reviews, s.addToCart,
-  s.noteToShop, s.noteHint, s.quantity,
-  s.decreaseQuantity, s.increaseQuantity, s.removeLine,
+  s.noteToShop, s.noteHint, s.quantity, s.removeLine,
   s.cartTitle, s.cartEmpty, s.reviewCart, s.reviewCartTitle,
   s.placeOrderTitle, s.placeOrder,
   s.paymentMethod, s.payCash, s.payOnline,
@@ -46,12 +39,11 @@ List<String> allStrings(CustomerStrings s) => <String>[
   s.reviewComment, s.submitReview, s.reviewThanks,
   s.noReviews, s.noRatingYet,
   s.getHelp, s.supportTitle, s.ticketSubject, s.raiseTicket,
-  s.ticketOpen, s.ticketResolved, s.noTickets,
-  s.notAvailableYet, s.offersTitle, s.promosTitle, s.referralTitle,
+  s.ticketOpen, s.ticketResolved, s.noTickets, s.offersTitle, s.promosTitle, s.referralTitle,
   s.safetyTitle, s.permissionsTitle,
   s.paymentMethodsTitle, s.paymentMethodsBody,
   s.permissionLocation, s.permissionNotifications,
-  s.back, s.confirm, s.showingSaved, s.nothingHere,
+  s.back, s.confirm,
 ];
 
 /// The Bengali block, `U+0980..U+09FF`.
@@ -69,14 +61,9 @@ void main() {
   });
 
   test('the Bengali table is actually in Bengali script', () {
-    // `bengali`, `english`, the phone placeholder and the language tag are
-    // the four that are deliberately not: two are language names shown in
-    // their own script, one is a number format, and one is a code.
-    final Set<String> exempt = <String>{
-      bn.languageTag,
-      bn.phoneHint,
-      bn.english,
-    };
+    // `english` and the language tag are the two that are deliberately not:
+    // one is a language named in its own script, the other is a code.
+    final Set<String> exempt = <String>{bn.languageTag, bn.english};
     final Iterable<String> latinOnly = allStrings(
       bn,
     ).where((String s) => !exempt.contains(s) && !hasBengali(s));

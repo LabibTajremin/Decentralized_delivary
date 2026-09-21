@@ -36,6 +36,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
+    final GoklayStrings core = GoklayLocalizations.of(context);
     final List<(String, String)> pages = <(String, String)>[
       (strings.onboardingTitle1, strings.onboardingBody1),
       (strings.onboardingTitle2, strings.onboardingBody2),
@@ -92,7 +93,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
               const SizedBox(height: GoklaySpacing.xl),
               GoklayButton(
-                label: isLast ? strings.getStarted : strings.next,
+                label: isLast ? core.getStarted : strings.next,
                 expand: true,
                 onPressed: _next,
               ),

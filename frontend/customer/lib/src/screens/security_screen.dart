@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
-import '../api/models/auth.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
 import '../widgets/cards.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// `07__Profile | Security` (`1:3446`), which the design draws empty.
 ///
@@ -72,7 +66,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.security,
       body: ListenableBuilder(
         listenable: _runner,

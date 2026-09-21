@@ -48,6 +48,33 @@ admits it has none.
 | Reviews | `POST /v1/reviews` | Offered on a delivered order. Same reason. |
 | Active sessions | `GET /v1/auth/sessions`, `POST /v1/auth/logout-all` | Shown on `07__Profile | Security`, which the design draws but leaves empty. |
 
+## The merchant and partner apps are not in the file at all
+
+P19 builds two more apps. The Figma source has **no frames for either**: of
+the 10,456 named nodes on `06 Source — GoKlay v1`, a search for *merchant*,
+*vendor*, *shop owner*, *rider*, *courier* or *driver* returns three
+decorative labels inside customer screens — "Tip your rider", "Courier",
+"Trained and Verified Drivers" — and nothing else. Every frame in the file is
+customer-facing.
+
+This is not a screen missing from a flow; it is two whole products missing.
+§174 says the agent does not invent a screen that is not in Figma, and the
+answer here is neither to invent one nor to skip the phase:
+
+* **The layout comes from the API.** Each screen exists because an endpoint
+  does, and shows what that endpoint returns. Nothing is designed around data
+  the backend does not have.
+* **The look comes from `goklay_core`**, which *is* the Figma file: the seven
+  colours, the type scale, the 48dp floor and the Bengali fallback were all
+  read out of it in P17. Applying an existing design system is not designing a
+  new one.
+* **No visual invention beyond that.** No illustrations, no bespoke charts, no
+  marketing copy. Where a merchant or partner screen would want a flourish,
+  it gets a card.
+
+If frames for these apps arrive later, the screens are the ones to restyle;
+the wiring underneath them is what the endpoints dictate either way.
+
 ## Where the design and the accessibility floor disagree
 
 Recorded in `docs/technical/frontend.md` rather than here, because P17 resolved

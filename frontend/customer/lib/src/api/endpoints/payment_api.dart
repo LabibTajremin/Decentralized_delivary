@@ -1,6 +1,5 @@
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api_page.dart';
 import '../models/payment.dart';
 
 /// Paying for an order that was placed `online`.

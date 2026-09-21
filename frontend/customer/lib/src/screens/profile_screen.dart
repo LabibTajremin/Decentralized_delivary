@@ -1,16 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
-import '../api/models/account.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/async_value.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// `05__Profile | Personal info` and `06__Profile Edit` (`1:3289`, `1:3394`),
 /// which are one screen: the fields are editable and a save button commits
@@ -80,7 +73,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.personalInfo,
       body: AsyncView<Profile>(
         store: _profile,

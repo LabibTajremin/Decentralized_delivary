@@ -12,9 +12,19 @@ frontend/
   pubspec.yaml          # Dart pub workspace root — not a shippable package
   analysis_options.yaml # the lint rules every package here inherits
   coverage-exclusions.txt
-  goklay_core/          # this phase
-  customer/ merchant/ partner/   # P18, P19
+  goklay_core/          # this phase, grown in P19
+  customer/             # P18
+  merchant/ partner/    # P19
 ```
+
+> **P19 note.** `goklay_core` is bigger than this phase left it. P18 wrote the
+> state primitives, the session, the JSON readers, the shared screen furniture
+> and the sign-in flow inside the customer app; P19 moved them here rather
+> than copying them into two more apps, because three copies of "what does a
+> failed request look like" become three different answers. The string table
+> grew from seven to thirty for the same reason — everything added is chrome
+> the sign-in flow says, or a word a shared widget needs. See
+> `docs/technical/merchant-app.md` and `docs/technical/partner-app.md`.
 
 `frontend/pubspec.yaml` is a pub workspace root. One `flutter pub get`
 resolves every package under `frontend/` against a single lockfile, and one

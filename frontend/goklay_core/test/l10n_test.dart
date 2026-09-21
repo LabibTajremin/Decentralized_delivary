@@ -53,7 +53,34 @@ void main() {
         (bn.offlineBanner, en.offlineBanner),
         (bn.queuedOffline, en.queuedOffline),
         (bn.unexpectedError, en.unexpectedError),
+        // P19 moved five more here, when the widgets that say them moved out
+        // of the customer app into this package.
+        (bn.showingSaved, en.showingSaved),
+        (bn.nothingHere, en.nothingHere),
+        (bn.notAvailableYet, en.notAvailableYet),
+        (bn.decreaseQuantity, en.decreaseQuantity),
+        (bn.increaseQuantity, en.increaseQuantity),
+        // And fifteen more when the sign-in flow itself moved here, because
+        // all three apps have it and only the role differs.
+        (bn.signInTitle, en.signInTitle),
+        (bn.phoneLabel, en.phoneLabel),
+        (bn.sendCode, en.sendCode),
+        (bn.otpTitle, en.otpTitle),
+        (bn.otpSubtitle, en.otpSubtitle),
+        (bn.verifyCode, en.verifyCode),
+        (bn.resendCountdown, en.resendCountdown),
+        (bn.resendCode, en.resendCode),
+        (bn.verifiedTitle, en.verifiedTitle),
+        (bn.verifiedBody, en.verifiedBody),
+        (bn.verificationFailedTitle, en.verificationFailedTitle),
+        (bn.verificationFailedBody, en.verificationFailedBody),
+        (bn.startOver, en.startOver),
+        (bn.getStarted, en.getStarted),
       ];
+
+      // `phoneHint` is deliberately not in the pair list: it is a number
+      // format, `01XXXXXXXXX`, and is the same in both languages.
+      expect(bn.phoneHint, en.phoneHint);
 
       for (final (String b, String e) in pairs) {
         expect(b, isNotEmpty);
@@ -78,6 +105,25 @@ void main() {
         bn.offlineBanner,
         bn.queuedOffline,
         bn.unexpectedError,
+        bn.showingSaved,
+        bn.nothingHere,
+        bn.notAvailableYet,
+        bn.decreaseQuantity,
+        bn.increaseQuantity,
+        bn.signInTitle,
+        bn.phoneLabel,
+        bn.sendCode,
+        bn.otpTitle,
+        bn.otpSubtitle,
+        bn.verifyCode,
+        bn.resendCountdown,
+        bn.resendCode,
+        bn.verifiedTitle,
+        bn.verifiedBody,
+        bn.verificationFailedTitle,
+        bn.verificationFailedBody,
+        bn.startOver,
+        bn.getStarted,
       ]) {
         expect(
           value.runes.any((int r) => r >= 0x0980 && r <= 0x09FF),

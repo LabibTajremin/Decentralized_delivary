@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
 
 /// One section of a shop's menu.
 @immutable

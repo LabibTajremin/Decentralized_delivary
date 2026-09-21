@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
-import '../api/models/account.dart';
 import '../api/models/discovery.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/async_value.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
 import '../widgets/cards.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// `01__Home Screen` (`1:280`, `1:859`, `1:1401` — the same screen with each
 /// type chip selected).
@@ -122,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: 'GoKlay',
       showBack: false,
       body: ListenableBuilder(

@@ -5,10 +5,6 @@ import '../api/endpoints/cart_api.dart';
 import '../api/models/catalogue.dart';
 import '../app_scope.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/messages.dart';
-import '../widgets/quantity_stepper.dart';
-import '../widgets/scaffold.dart';
 
 /// `03__More Details` / `04__Add to cart` (`1:11963`, `1:8519`).
 ///
@@ -98,7 +94,7 @@ class _ItemScreenState extends State<ItemScreen> {
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final PublicItem item = widget.item;
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: item.name,
       body: ListenableBuilder(
         listenable: _runner,

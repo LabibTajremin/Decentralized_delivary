@@ -6,8 +6,8 @@
 # that `flutter analyze` run here covers all of them at once — which is exactly
 # what scripts/verify.sh does.
 #
-# P17 added goklay_core and P18 the customer app. P19 adds merchant/ and
-# partner/; each appends itself to the workspace list below.
+# P17 added goklay_core, P18 the customer app, P19 the merchant and partner
+# apps. One `flutter pub get` here resolves all four.
 name: goklay_frontend
 description: Workspace root for the GoKlay Flutter apps. Not a shippable package.
 publish_to: none
@@ -18,3 +18,5 @@ environment:
 workspace:
   - goklay_core
   - customer
+  - merchant
+  - partner

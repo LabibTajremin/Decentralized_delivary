@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:goklay_core/goklay_core.dart';
 
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/scaffold.dart';
 
 /// `16__Language` (`1:3960`).
 ///
@@ -51,7 +50,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final String current = strings.languageTag;
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.language,
       body: ListenableBuilder(
         listenable: _runner,

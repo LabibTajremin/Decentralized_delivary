@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
 
 /// What `POST /v1/payments/checkout` answers.
 @immutable

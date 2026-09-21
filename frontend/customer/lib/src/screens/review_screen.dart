@@ -6,10 +6,6 @@ import '../api/models/support.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
-import '../widgets/star_rating.dart';
 
 /// Leaving a review on a finished order.
 ///
@@ -81,7 +77,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final bool hasRider = widget.order.partnerId != null;
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.reviewTitle,
       body: ListenableBuilder(
         listenable: _runner,

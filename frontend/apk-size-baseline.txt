@@ -1,0 +1,13 @@
+# Release APK sizes, arm64-v8a, in MB, as measured by scripts/apk-size-check.sh.
+#
+# The gate refuses a build over 20 MB, and refuses one that grew more than 10%
+# against the figure here. Growing past that is not forbidden — it is a thing
+# to justify in the pull request and then record, by editing this file in the
+# same change.
+#
+# Most of these 17 MB is the Flutter engine and the ten font files P17 shipped
+# so that Bengali renders at all. The app code is a small fraction of it, which
+# is why three apps come out within half a megabyte of each other.
+customer 17.50
+merchant 17.38
+partner 17.19

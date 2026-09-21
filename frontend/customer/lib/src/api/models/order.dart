@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
-import 'cart.dart';
 
 /// One end of a delivery, as the order shows it.
 @immutable

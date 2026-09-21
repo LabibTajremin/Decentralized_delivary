@@ -7,8 +7,6 @@ import 'package:goklay_customer/src/l10n/customer_strings.dart';
 import 'package:goklay_customer/src/screens/review_screen.dart';
 import 'package:goklay_customer/src/screens/shop_reviews_screen.dart';
 import 'package:goklay_customer/src/screens/support_screen.dart';
-import 'package:goklay_customer/src/widgets/messages.dart';
-import 'package:goklay_customer/src/widgets/star_rating.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';

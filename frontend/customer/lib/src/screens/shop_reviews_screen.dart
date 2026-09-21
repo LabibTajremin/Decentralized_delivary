@@ -1,17 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api/api_page.dart';
 import '../api/models/support.dart';
 import '../app_scope.dart';
 import '../dependencies.dart';
 import '../l10n/customer_strings.dart';
-import '../state/store.dart';
-import '../widgets/async_view.dart';
 import '../widgets/cards.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
-import '../widgets/star_rating.dart';
 
 /// What other customers said about a shop.
 ///
@@ -83,7 +77,7 @@ class _ShopReviewsScreenState extends State<ShopReviewsScreen> {
   Widget build(BuildContext context) {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final Rating? rating = _rating;
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: widget.merchantName,
       body: AsyncView<List<Review>>(
         store: _reviews,

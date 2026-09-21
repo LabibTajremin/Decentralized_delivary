@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
 
 /// The three things a review can be about.
 enum ReviewSubject {

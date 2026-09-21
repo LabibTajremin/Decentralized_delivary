@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-21T16:00:00Z
-current_phase: P18
-current_task: P19.T01
+current_phase: P19
+current_task: P20.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -24,24 +24,23 @@ going.
 **No model switch is left.** P13–P16 ran on Sonnet 5; the user switched to Opus
 for P17 and P17–P20 all run there. Keep going to P20.
 
-Next action: **start P19 (Flutter merchant and partner apps)** — read
-`docs/build/phases/P19.md`, write its task list into a `## P19 tasks` section
-below, and build it the way every other phase was built (`CLAUDE.md` → "How a
-phase goes"). `docs/technical/frontend.md` is the foundation both apps stand
-on, and `docs/technical/customer-app.md` is the pattern P18 settled: models →
-per-feature API clients → `Dependencies` + `AppScope` → screens with callbacks
-→ `routes.dart`. Copy it rather than inventing a second shape.
+Next action: **start P20 (hardening and release)** — the last phase. Read
+`docs/build/phases/P20.md`, write its task list into a `## P20 tasks` section
+below, and finish it.
 
-Two things from P18 that P19 will hit immediately:
+What the previous three phases leave for it:
 
-* **The APK is at 18.4 MB against a 20 MB ceiling** (arm64, release,
-  split-per-abi). One customer app already costs that much, mostly fonts and
-  the Flutter engine. A merchant or partner app that grows the same way will
-  fail `scripts/apk-size-check.sh`, so watch it from the first screen rather
-  than at the end.
-* **`docs/design-gaps.md` is the register** for a Figma screen with no
-  backend, or a backend surface with no Figma screen. Add to it; do not invent
-  a screen, and do not silently drop one.
+* **Three release APKs at ~17.2–17.5 MB against a 20 MB ceiling**, recorded in
+  `frontend/apk-size-baseline.txt`. Most of that is the Flutter engine and the
+  ten font files P17 shipped so Bengali renders at all. The gate also refuses
+  more than 10% growth against those figures.
+* **`docs/design-gaps.md`** lists everything the design asks for that the
+  backend has not got, and everything the backend has that the design never
+  drew. P20 should read it before deciding anything is missing.
+* **`goklay_core` is the shared half of all three apps** — tokens, theme, the
+  accessibility floor, localisation, the transport, the state primitives, the
+  shared widgets and the whole sign-in flow. A change there lands in three
+  apps at once, which is the point and also the risk.
 
 Before running anything:
 
@@ -109,7 +108,8 @@ P15 DONE       admin & auto-tuning — ALG-09 radius tuning within bounds and pi
 P16 DONE       review & support — ratings for merchant/partner/item, eligibility built entirely from OrderContract, ticket resolution triggers PaymentContract.Refund
 P17 DONE       Flutter foundation — pub workspace + goklay_core, Figma tokens, 48dp/contrast floor enforced by tests, Bengali-first l10n with the font the design lacks, API transport, thin-client lint proven
 P18 DONE       Flutter customer app — 27 screens on the P17 foundation, the Figma registry reconciled against the API in docs/design-gaps.md, every enabled state a server flag, 100% coverage; added order.merchant_id/partner_id so the review screen can name a subject P16 will accept
-P19..P20 TODO
+P19 DONE       merchant & partner apps — no Figma frames existed for either, so both are built from the API surface and goklay_core's tokens (docs/design-gaps.md); goklay_core absorbed the app-agnostic half of P18 rather than it being copied twice; the offline queue P17 built is finally used, by the rider's job screen
+P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -542,6 +542,43 @@ P18.T11 DONE  reviews (shop always, rider only when one collected it) and suppor
 P18.T12 DONE  16 test files, 273 tests, 100% coverage with coverage-exclusions.txt still empty
 P18.T13 DONE  ./scripts/verify.sh exits 0; docs/technical/customer-app.md; this file
 ```
+
+## P19 tasks
+
+**The Figma file has no merchant and no partner screens.** All 10,456 named
+nodes in `NlVjn8OuvmLjbm8z8TDVlR` are customer-facing; a search for merchant,
+vendor, rider, courier or driver finds three decorative labels and nothing
+else. Recorded in `docs/design-gaps.md`. So these two apps are built from the
+API surface and `goklay_core`'s tokens — the same tokens the Figma file
+defines — rather than from frames, and nothing visual is invented beyond
+applying the design system that already exists.
+
+```
+P19.T01 DONE  the Figma gap recorded in docs/design-gaps.md; endpoint inventory; this list
+P19.T02 DONE  promoted the app-agnostic half of P18 into goklay_core — state, session, json, ApiPage, the shared widgets, the auth/account calls and their models, and the whole sign-in flow (parameterised by role); GoklayStrings grew 7 → 30, all of it chrome
+P19.T03 DONE  merchant — shell, registration/details, documents, hours, holiday; can_submit and missing_documents drive the whole approval screen
+P19.T04 DONE  merchant — catalogue; the screen's shape is catalogue/capabilities, never the shop's type
+P19.T05 DONE  merchant — the order board; every button is built from next_actions
+P19.T06 DONE  partner — shell, sign-up (D1: no area to register in), shift and D4's distance choice
+P19.T07 DONE  partner — the feed (ALG-08, with the server's reason for an empty one) and the collect/deliver/fail lifecycle
+P19.T08 DONE  partner — the COD ledger; both totals are the server's, nothing is added up here
+P19.T09 DONE  the offline queue wired into the job screen: offline is queued, refused is shown, sign-out clears it
+P19.T10 DONE  100% coverage in all four packages; APK budget recorded in frontend/apk-size-baseline.txt
+P19.T11 DONE  verify.sh green; docs/technical/merchant-app.md and partner-app.md; this file
+```
+
+## What P19 found
+
+* **There are no merchant or partner frames in the Figma file at all.** Not a
+  missing screen — two missing products. Recorded in `docs/design-gaps.md`
+  with what was done instead.
+* **Three copies of the customer app's plumbing would have been three
+  answers.** The promotion into `goklay_core` was the first task of the phase
+  rather than a cleanup at the end, and it is why the two new apps are mostly
+  screens.
+* **A shared string table is not the same as an empty one.** P17 said seven
+  strings and gave the reason; P19's thirty are the same reason applied to
+  three apps — the sign-in flow's words, and the handful a shared widget says.
 
 ## What P18's tests found
 

@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goklay_core/goklay_core.dart';
-import 'package:goklay_customer/src/api/models/account.dart';
 import 'package:goklay_customer/src/dependencies.dart';
 import 'package:goklay_customer/src/l10n/customer_strings.dart';
 import 'package:goklay_customer/src/screens/account_screen.dart';
@@ -13,8 +12,6 @@ import 'package:goklay_customer/src/screens/notifications_screen.dart';
 import 'package:goklay_customer/src/screens/placeholder_screen.dart';
 import 'package:goklay_customer/src/screens/profile_screen.dart';
 import 'package:goklay_customer/src/screens/security_screen.dart';
-import 'package:goklay_customer/src/widgets/messages.dart';
-import 'package:goklay_customer/src/widgets/scaffold.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
@@ -553,7 +550,7 @@ void main() {
           find.text(PlaceholderScreenView.titleOf(bn, screen)),
           findsOneWidget,
         );
-        expect(find.text(bn.notAvailableYet), findsOneWidget);
+        expect(find.text(core.notAvailableYet), findsOneWidget);
         expect(find.byType(NotAvailableView), findsOneWidget);
       }
       expect(

@@ -1,0 +1,36 @@
+# The GoKlay merchant app: register a shop, keep its menu, work the order
+# board.
+#
+# It renders and nothing else. Whether an order may be accepted, what a line
+# costs, which sections a grocery is allowed to keep — all of that is decided
+# by the backend and arrives ready to paint (2.9), and
+# scripts/thin-client-lint.sh fails the build if a rule appears here.
+name: goklay_merchant
+description: GoKlay merchant app.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # Tokens, theme, the accessibility floor, localisation, the API transport,
+  # the state primitives and the shared screen furniture. P19 moved the
+  # app-agnostic half of the customer app in there rather than copying it.
+  goklay_core:
+    path: ../goklay_core
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

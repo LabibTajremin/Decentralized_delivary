@@ -1,7 +1,5 @@
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api_page.dart';
-import '../models/account.dart';
 import '../models/discovery.dart';
 
 /// Finding shops, and placing the customer on the map.

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:goklay_core/goklay_core.dart';
 
-import 'api/models/account.dart';
 import 'api/models/cart.dart';
 import 'api/models/catalogue.dart';
 import 'api/models/discovery.dart';

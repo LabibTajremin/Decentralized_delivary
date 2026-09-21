@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goklay_core/goklay_core.dart';
-import 'package:goklay_customer/src/api/models/account.dart';
 import 'package:goklay_customer/src/api/models/cart.dart';
 import 'package:goklay_customer/src/dependencies.dart';
 import 'package:goklay_customer/src/environment.dart';
@@ -16,9 +15,6 @@ import 'package:goklay_customer/src/screens/orders_screen.dart';
 import 'package:goklay_customer/src/screens/place_order_screen.dart';
 import 'package:goklay_customer/src/screens/review_cart_screen.dart';
 import 'package:goklay_customer/src/screens/tracking_screen.dart';
-import 'package:goklay_customer/src/widgets/messages.dart';
-import 'package:goklay_customer/src/widgets/quantity_stepper.dart';
-import 'package:goklay_customer/src/widgets/scaffold.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -31,6 +27,7 @@ import 'support/harness.dart';
 /// tested rather than excluded.
 void main() {
   const CustomerStringsBn bn = CustomerStringsBn();
+  const GoklayStringsBn core = GoklayStringsBn();
   late FakeBackend backend;
 
   setUp(() => backend = FakeBackend(<String, Object? Function(SentRequest)>{}));
@@ -50,7 +47,7 @@ void main() {
       ),
       dependencies: dependencies,
     );
-    await tester.tap(find.bySemanticsLabel(bn.decreaseQuantity));
+    await tester.tap(find.bySemanticsLabel(core.decreaseQuantity));
     await tester.pumpAndSettle();
     expect(changes, <int>[2]);
     dependencies.dispose();

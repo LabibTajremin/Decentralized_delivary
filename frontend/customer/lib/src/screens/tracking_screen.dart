@@ -6,8 +6,6 @@ import 'package:goklay_core/goklay_core.dart';
 import '../api/models/tracking.dart';
 import '../app_scope.dart';
 import '../l10n/customer_strings.dart';
-import '../widgets/messages.dart';
-import '../widgets/scaffold.dart';
 
 /// `10__Order Tracking` / `11__Order Tracking` (`1:10633`, `1:10691`) — the
 /// before-and-after of a rider being assigned.
@@ -84,7 +82,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     final CustomerStrings strings = CustomerLocalizations.of(context);
     final ApiError? error = _error;
     final TrackingSnapshot? snapshot = _snapshot;
-    return CustomerScaffold(
+    return GoklayScaffold(
       title: strings.trackingTitle,
       body: error != null
           ? ErrorView(

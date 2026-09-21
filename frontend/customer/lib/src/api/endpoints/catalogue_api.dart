@@ -1,6 +1,5 @@
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api_page.dart';
 import '../models/catalogue.dart';
 
 /// A shop's menu, as a customer sees it.

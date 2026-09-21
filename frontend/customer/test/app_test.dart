@@ -27,12 +27,9 @@ import 'package:goklay_customer/src/screens/security_screen.dart';
 import 'package:goklay_customer/src/screens/shop_reviews_screen.dart';
 import 'package:goklay_customer/src/screens/shop_screen.dart';
 import 'package:goklay_customer/src/screens/sign_in_options_screen.dart';
-import 'package:goklay_customer/src/screens/splash_screen.dart';
 import 'package:goklay_customer/src/screens/support_screen.dart';
 import 'package:goklay_customer/src/screens/tracking_screen.dart';
-import 'package:goklay_customer/src/screens/verification_result_screen.dart';
 import 'package:goklay_customer/src/widgets/cards.dart';
-import 'package:goklay_customer/src/widgets/scaffold.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
@@ -54,6 +51,7 @@ Map<String, Object? Function(SentRequest)> shellRoutes() =>
 
 void main() {
   const CustomerStringsBn bn = CustomerStringsBn();
+  const GoklayStringsBn core = GoklayStringsBn();
   late FakeBackend backend;
 
   setUp(() => backend = FakeBackend(shellRoutes()));
@@ -133,7 +131,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final Dependencies dependencies = await pumpApp(tester);
-      expect(find.byType(SplashScreen), findsNothing);
+      expect(find.byType(GoklaySplashScreen), findsNothing);
       expect(find.byType(MainShell), findsOneWidget);
       dependencies.dispose();
     });
@@ -159,16 +157,16 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '01712345678');
       await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel(bn.sendCode));
+      await tester.tap(find.bySemanticsLabel(core.sendCode));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField), '123456');
       await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel(bn.verifyCode));
+      await tester.tap(find.bySemanticsLabel(core.verifyCode));
       await tester.pumpAndSettle();
-      expect(find.text(bn.verifiedTitle), findsOneWidget);
+      expect(find.text(core.verifiedTitle), findsOneWidget);
 
-      await tester.tap(find.bySemanticsLabel(bn.getStarted));
+      await tester.tap(find.bySemanticsLabel(core.getStarted));
       await tester.pumpAndSettle();
       expect(find.byType(MainShell), findsOneWidget);
       dependencies.dispose();
@@ -194,18 +192,18 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '01712345678');
       await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel(bn.sendCode));
+      await tester.tap(find.bySemanticsLabel(core.sendCode));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '999999');
       await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel(bn.verifyCode));
+      await tester.tap(find.bySemanticsLabel(core.verifyCode));
       await tester.pumpAndSettle();
 
       expect(find.byType(VerificationResultScreen), findsOneWidget);
       expect(find.text('কোড মেলেনি'), findsOneWidget);
-      await tester.tap(find.bySemanticsLabel(bn.startOver));
+      await tester.tap(find.bySemanticsLabel(core.startOver));
       await tester.pumpAndSettle();
-      expect(find.text(bn.phoneLabel), findsOneWidget);
+      expect(find.text(core.phoneLabel), findsOneWidget);
       dependencies.dispose();
     });
   });

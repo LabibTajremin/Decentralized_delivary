@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:goklay_core/goklay_core.dart';
 
-import '../json.dart';
 
 /// The delivery fee quoted on a shop card.
 ///

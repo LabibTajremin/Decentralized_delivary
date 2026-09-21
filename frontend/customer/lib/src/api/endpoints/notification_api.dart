@@ -1,6 +1,5 @@
 import 'package:goklay_core/goklay_core.dart';
 
-import '../api_page.dart';
 import '../models/notification.dart';
 
 /// The customer's notification history, and this device's push registration.

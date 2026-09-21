@@ -29,8 +29,6 @@ abstract class CustomerStrings {
   /// Moves to the next onboarding page.
   String get next;
 
-  /// Leaves onboarding for the sign-in screen.
-  String get getStarted;
 
   /// Heading of the first onboarding page.
   String get onboardingTitle1;
@@ -50,8 +48,6 @@ abstract class CustomerStrings {
   /// Body of the third onboarding page.
   String get onboardingBody3;
 
-  /// Heading of the sign-in options screen.
-  String get signInTitle;
 
   /// Sub-heading of the sign-in options screen.
   String get signInSubtitle;
@@ -59,44 +55,18 @@ abstract class CustomerStrings {
   /// The one sign-in method this product has.
   String get continueWithPhone;
 
-  /// Label on the phone-number field.
-  String get phoneLabel;
 
-  /// Placeholder in the phone-number field.
-  String get phoneHint;
 
-  /// Submits the phone number.
-  String get sendCode;
 
-  /// Heading of the OTP screen.
-  String get otpTitle;
 
-  /// Sub-heading of the OTP screen.
-  String get otpSubtitle;
 
-  /// Submits the code.
-  String get verifyCode;
 
-  /// Label on the countdown before "resend" is offered.
-  String get resendCountdown;
 
-  /// Asks for another code.
-  String get resendCode;
 
-  /// Heading of the success screen.
-  String get verifiedTitle;
 
-  /// Body of the success screen.
-  String get verifiedBody;
 
-  /// Heading of the failure screen.
-  String get verificationFailedTitle;
 
-  /// Body of the failure screen.
-  String get verificationFailedBody;
 
-  /// Starts sign-in over.
-  String get startOver;
 
   // ---- home and discovery ----------------------------------------------
 
@@ -147,11 +117,7 @@ abstract class CustomerStrings {
   /// Label above the quantity stepper.
   String get quantity;
 
-  /// Reduces the quantity by one.
-  String get decreaseQuantity;
 
-  /// Increases the quantity by one.
-  String get increaseQuantity;
 
   /// Removes a line from the cart.
   String get removeLine;
@@ -389,8 +355,6 @@ abstract class CustomerStrings {
 
   // ---- screens the backend does not have --------------------------------
 
-  /// What a placeholder screen says, in place of inventing data.
-  String get notAvailableYet;
 
   /// Heading of the offers placeholder.
   String get offersTitle;
@@ -427,11 +391,7 @@ abstract class CustomerStrings {
   /// Confirms.
   String get confirm;
 
-  /// Shown on a list that came out of the cache rather than the network.
-  String get showingSaved;
 
-  /// Shown over an empty list with nothing more specific to say.
-  String get nothingHere;
 }
 
 /// Bengali. The default, because the product is (1.4).
@@ -446,8 +406,6 @@ class CustomerStringsBn implements CustomerStrings {
   String get skip => 'এড়িয়ে যান';
   @override
   String get next => 'পরবর্তী';
-  @override
-  String get getStarted => 'শুরু করুন';
   @override
   String get onboardingTitle1 => 'কাছের দোকান থেকে';
   @override
@@ -464,37 +422,9 @@ class CustomerStringsBn implements CustomerStrings {
   String get onboardingBody3 =>
       'রাইডার কোথায় আছেন, অর্ডার দেওয়ার পর থেকেই দেখতে পাবেন।';
   @override
-  String get signInTitle => 'স্বাগতম';
-  @override
   String get signInSubtitle => 'চালিয়ে যেতে মোবাইল নম্বর দিন।';
   @override
   String get continueWithPhone => 'মোবাইল নম্বর দিয়ে চালিয়ে যান';
-  @override
-  String get phoneLabel => 'মোবাইল নম্বর';
-  @override
-  String get phoneHint => '01XXXXXXXXX';
-  @override
-  String get sendCode => 'কোড পাঠান';
-  @override
-  String get otpTitle => 'কোড দিন';
-  @override
-  String get otpSubtitle => 'আপনার মোবাইলে পাঠানো ছয় অঙ্কের কোডটি লিখুন।';
-  @override
-  String get verifyCode => 'যাচাই করুন';
-  @override
-  String get resendCountdown => 'আবার পাঠানো যাবে';
-  @override
-  String get resendCode => 'কোড আবার পাঠান';
-  @override
-  String get verifiedTitle => 'যাচাই সম্পন্ন';
-  @override
-  String get verifiedBody => 'আপনি এখন অর্ডার করতে পারেন।';
-  @override
-  String get verificationFailedTitle => 'যাচাই করা যায়নি';
-  @override
-  String get verificationFailedBody => 'কোডটি মেলেনি বা মেয়াদ শেষ হয়ে গেছে।';
-  @override
-  String get startOver => 'আবার শুরু করুন';
 
   @override
   String get deliverTo => 'ডেলিভারি হবে';
@@ -527,10 +457,6 @@ class CustomerStringsBn implements CustomerStrings {
   String get noteHint => 'যেমন: ঝাল কম দেবেন';
   @override
   String get quantity => 'পরিমাণ';
-  @override
-  String get decreaseQuantity => 'একটি কমান';
-  @override
-  String get increaseQuantity => 'একটি বাড়ান';
   @override
   String get removeLine => 'সরান';
   @override
@@ -688,8 +614,6 @@ class CustomerStringsBn implements CustomerStrings {
   String get noTickets => 'কোনো অনুরোধ নেই।';
 
   @override
-  String get notAvailableYet => 'এই সুবিধাটি এখনো চালু হয়নি।';
-  @override
   String get offersTitle => 'অফার';
   @override
   String get promosTitle => 'প্রোমো কোড';
@@ -715,10 +639,6 @@ class CustomerStringsBn implements CustomerStrings {
   String get back => 'ফিরে যান';
   @override
   String get confirm => 'নিশ্চিত করুন';
-  @override
-  String get showingSaved => 'সংরক্ষিত তথ্য দেখানো হচ্ছে';
-  @override
-  String get nothingHere => 'দেখানোর মতো কিছু নেই।';
 }
 
 /// English, for `?lang=en`.
@@ -733,8 +653,6 @@ class CustomerStringsEn implements CustomerStrings {
   String get skip => 'Skip';
   @override
   String get next => 'Next';
-  @override
-  String get getStarted => 'Get started';
   @override
   String get onboardingTitle1 => 'From shops near you';
   @override
@@ -751,37 +669,9 @@ class CustomerStringsEn implements CustomerStrings {
   String get onboardingBody3 =>
       'Follow your rider from the moment the order is placed.';
   @override
-  String get signInTitle => 'Welcome';
-  @override
   String get signInSubtitle => 'Enter your mobile number to continue.';
   @override
   String get continueWithPhone => 'Continue with mobile number';
-  @override
-  String get phoneLabel => 'Mobile number';
-  @override
-  String get phoneHint => '01XXXXXXXXX';
-  @override
-  String get sendCode => 'Send code';
-  @override
-  String get otpTitle => 'Enter the code';
-  @override
-  String get otpSubtitle => 'Type the six-digit code sent to your phone.';
-  @override
-  String get verifyCode => 'Verify';
-  @override
-  String get resendCountdown => 'You can ask again in';
-  @override
-  String get resendCode => 'Send the code again';
-  @override
-  String get verifiedTitle => 'Verified';
-  @override
-  String get verifiedBody => 'You can start ordering.';
-  @override
-  String get verificationFailedTitle => 'Could not verify';
-  @override
-  String get verificationFailedBody => 'The code did not match, or it expired.';
-  @override
-  String get startOver => 'Start over';
 
   @override
   String get deliverTo => 'Deliver to';
@@ -814,10 +704,6 @@ class CustomerStringsEn implements CustomerStrings {
   String get noteHint => 'For example: not too spicy';
   @override
   String get quantity => 'Quantity';
-  @override
-  String get decreaseQuantity => 'One fewer';
-  @override
-  String get increaseQuantity => 'One more';
   @override
   String get removeLine => 'Remove';
   @override
@@ -975,8 +861,6 @@ class CustomerStringsEn implements CustomerStrings {
   String get noTickets => 'No requests.';
 
   @override
-  String get notAvailableYet => 'This is not available yet.';
-  @override
   String get offersTitle => 'Offers';
   @override
   String get promosTitle => 'Promo codes';
@@ -1002,10 +886,6 @@ class CustomerStringsEn implements CustomerStrings {
   String get back => 'Back';
   @override
   String get confirm => 'Confirm';
-  @override
-  String get showingSaved => 'Showing saved information';
-  @override
-  String get nothingHere => 'Nothing to show.';
 }
 
 /// Looks the table up, Bengali-first.

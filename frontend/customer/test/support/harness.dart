@@ -8,7 +8,6 @@ import 'package:goklay_customer/src/app_scope.dart';
 import 'package:goklay_customer/src/dependencies.dart';
 import 'package:goklay_customer/src/environment.dart';
 import 'package:goklay_customer/src/l10n/customer_strings.dart';
-import 'package:goklay_customer/src/session/token_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -114,33 +113,66 @@ Future<Dependencies> harnessDependencies(
   return dependencies;
 }
 
-/// Scrolls [finder] into view, then taps it.
+/// Scrolls the list back to the top.
 ///
-/// A test window is 800x600 logical pixels, and Flutter builds no semantics
-/// node for a widget that is off-screen — so a `bySemanticsLabel` finder comes
-/// back empty for a button that exists but is below the fold. Scrolling to it
-/// first is what a customer does anyway. Pass a widget finder, not a semantics
-/// one, for the same reason.
-Future<void> revealAndTap(WidgetTester tester, Finder finder) async {
-  if (finder.evaluate().isEmpty) {
-    // Not merely off-screen: a ListView builds only what fits, so it is not in
-    // the tree at all yet. Scroll until it is — through the list's own
-    // scrollable, because every TextField on a form has one of its own and
-    // `find.byType(Scrollable).first` would pick one of those.
-    final Finder list = find.byType(ListView);
-    await tester.scrollUntilVisible(
-      finder,
-      200,
-      scrollable: list.evaluate().isEmpty
-          ? find.byType(Scrollable).first
-          : find
-                .descendant(of: list.first, matching: find.byType(Scrollable))
-                .first,
-    );
+/// Needed after a [reveal] that walked to the bottom: everything above the
+/// fold has been disposed, and a finder for it comes back empty.
+Future<void> scrollToTop(WidgetTester tester) async {
+  final Finder list = find.byType(ListView);
+  if (list.evaluate().isEmpty) {
+    return;
   }
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
+  for (int attempt = 0; attempt < 20; attempt++) {
+    await tester.drag(list.first, const Offset(0, 400));
+    await tester.pumpAndSettle();
+  }
+}
+
+/// Scrolls [finder] into view without tapping it.
+///
+/// A `ListView` builds only what fits, so a widget below the fold is not in
+/// the tree at all — `ensureVisible` cannot help until it exists. Dragging the
+/// list is what a person does, and it avoids `scrollUntilVisible`'s need to
+/// name a single scrollable on a screen where every `TextField` has one.
+Future<void> reveal(WidgetTester tester, Finder finder) async {
+  final Finder list = find.byType(ListView);
+  if (finder.evaluate().isEmpty && list.evaluate().isNotEmpty) {
+    // Start from the top: a previous reveal may have walked past this widget,
+    // and everything above the fold has been disposed since.
+    await scrollToTop(tester);
+  }
+  for (int attempt = 0; attempt < 20 && finder.evaluate().isEmpty; attempt++) {
+    if (list.evaluate().isEmpty) {
+      break;
+    }
+    await tester.drag(list.first, const Offset(0, -240));
+    await tester.pumpAndSettle();
+  }
+  if (finder.evaluate().isNotEmpty) {
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+}
+
+/// Scrolls [finder] into view, then taps it.
+Future<void> revealAndTap(WidgetTester tester, Finder finder) async {
+  await reveal(tester, finder);
   await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+/// Scrolls the field labelled [label] into view and types [value] into it.
+Future<void> enterInto(
+  WidgetTester tester,
+  String label,
+  String value,
+) async {
+  final Finder field = find.widgetWithText(LabelledField, label);
+  await reveal(tester, field);
+  await tester.enterText(
+    find.descendant(of: field, matching: find.byType(TextField)),
+    value,
+  );
   await tester.pumpAndSettle();
 }
 

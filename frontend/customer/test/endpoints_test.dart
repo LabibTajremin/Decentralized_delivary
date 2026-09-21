@@ -1,19 +1,13 @@
-import 'dart:ui' show Locale;
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goklay_core/goklay_core.dart';
-import 'package:goklay_customer/src/api/api_page.dart';
 import 'package:goklay_customer/src/api/endpoints/cart_api.dart';
 import 'package:goklay_customer/src/api/endpoints/order_api.dart';
-import 'package:goklay_customer/src/api/models/account.dart';
-import 'package:goklay_customer/src/api/models/auth.dart';
 import 'package:goklay_customer/src/api/models/cart.dart';
 import 'package:goklay_customer/src/api/models/notification.dart';
 import 'package:goklay_customer/src/api/models/order.dart';
 import 'package:goklay_customer/src/api/models/payment.dart';
 import 'package:goklay_customer/src/api/models/support.dart';
 import 'package:goklay_customer/src/dependencies.dart';
-import 'package:goklay_customer/src/state/async_value.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
@@ -34,134 +28,6 @@ void main() {
 
   void route(String key, Object? Function(SentRequest request) handler) =>
       backend.routes[key] = handler;
-
-  group('auth', () {
-    test('requesting a code sends the number and reads the countdown', () async {
-      route('POST /v1/auth/otp/request', (_) => <String, Object?>{
-        'phone': '+88017*****678',
-        'expires_in': 300,
-        'resend_after': 720,
-      });
-      final OtpChallenge challenge = await dependencies.auth.requestOtp(
-        '01712345678',
-      );
-      expect(challenge.resendAfter, const Duration(seconds: 720));
-      expect(lastBody('/v1/auth/otp/request')['phone'], '01712345678');
-    });
-
-    test('verification pins the role to customer, not to a parameter', () async {
-      route('POST /v1/auth/otp/verify', (_) => tokenPairJson());
-      final AuthResult result = await dependencies.auth.verifyOtp(
-        phone: '01712345678',
-        code: '123456',
-        device: 'Pixel 8',
-      );
-      expect(result.isCustomer, isTrue);
-      final Map<String, Object?> body = lastBody('/v1/auth/otp/verify');
-      expect(body['role'], 'customer');
-      expect(body['device'], 'Pixel 8');
-    });
-
-    test('an empty device name is left off rather than sent blank', () async {
-      route('POST /v1/auth/otp/verify', (_) => tokenPairJson());
-      await dependencies.auth.verifyOtp(phone: '017', code: '123456');
-      expect(lastBody('/v1/auth/otp/verify').containsKey('device'), isFalse);
-    });
-
-    test('refresh exchanges the stored token', () async {
-      route('POST /v1/auth/refresh', (_) => tokenPairJson());
-      await dependencies.auth.refresh('refresh-0');
-      expect(lastBody('/v1/auth/refresh')['refresh_token'], 'refresh-0');
-    });
-
-    test('logout and logout-all are plain posts', () async {
-      route('POST /v1/auth/logout', (_) => null);
-      route('POST /v1/auth/logout-all', (_) => null);
-      await dependencies.auth.logout();
-      await dependencies.auth.logoutAll();
-      expect(backend.to('/v1/auth/logout'), hasLength(1));
-      expect(backend.to('/v1/auth/logout-all'), hasLength(1));
-    });
-
-    test('the device list is read out of its envelope', () async {
-      route('GET /v1/auth/sessions', (_) => <String, Object?>{
-        'sessions': <Object?>[
-          <String, Object?>{
-            'session_id': 'ses-1',
-            'device': 'Pixel 8',
-            'current': true,
-          },
-          'not an object',
-        ],
-      });
-      final ApiPage<List<DeviceSession>> page =
-          await dependencies.auth.sessions();
-      expect(page.value, hasLength(1));
-      expect(page.value.single.device, 'Pixel 8');
-    });
-
-    test('a missing sessions array is an empty list, not a throw', () async {
-      route('GET /v1/auth/sessions', (_) => <String, Object?>{});
-      expect((await dependencies.auth.sessions()).value, isEmpty);
-    });
-  });
-
-  group('account', () {
-    test('the profile read carries its freshness through to the store', () async {
-      route('GET /v1/me', (_) => profileJson());
-      final ApiPage<Profile> page = await dependencies.account.profile();
-      expect(page.value.displayName, 'রিয়া');
-      expect(page.fromCache, isFalse);
-      expect(page.toAsyncData(), isA<AsyncData<Profile>>());
-    });
-
-    test('a patch sends only the fields that were given', () async {
-      route('PATCH /v1/me', (_) => profileJson());
-      await dependencies.account.updateProfile(name: 'নাদিয়া');
-      final Map<String, Object?> body = lastBody('/v1/me');
-      expect(body, <String, Object?>{'name': 'নাদিয়া'});
-    });
-
-    test('the address book skips entries that are not objects', () async {
-      route('GET /v1/me/addresses', (_) => <String, Object?>{
-        'addresses': <Object?>[addressJson(), 7],
-      });
-      final ApiPage<List<Address>> page = await dependencies.account
-          .addresses();
-      expect(page.value, hasLength(1));
-    });
-
-    test('a missing addresses array is an empty book', () async {
-      route('GET /v1/me/addresses', (_) => <String, Object?>{});
-      expect((await dependencies.account.addresses()).value, isEmpty);
-    });
-
-    test('a new address sends no area, district or division', () async {
-      route('POST /v1/me/addresses', (_) => addressJson());
-      await dependencies.account.addAddress(
-        label: 'বাসা',
-        recipientName: 'রিয়া',
-        recipientPhone: '01712345678',
-        line1: 'রোড ৫',
-        lat: 23.7461,
-        lng: 90.3742,
-        makeDefault: true,
-      );
-      final Map<String, Object?> body = lastBody('/v1/me/addresses');
-      expect(body['lat'], 23.7461);
-      expect(body['make_default'], isTrue);
-      expect(body.containsKey('area_code'), isFalse);
-      expect(body.containsKey('division_code'), isFalse);
-    });
-
-    test('an address can be removed and another made default', () async {
-      route('DELETE /v1/me/addresses/adr-1', (_) => null);
-      route('POST /v1/me/addresses/adr-2/default', (_) => addressJson(id: 'adr-2'));
-      await dependencies.account.deleteAddress('adr-1');
-      final Address promoted = await dependencies.account.makeDefault('adr-2');
-      expect(promoted.id, 'adr-2');
-    });
-  });
 
   group('discovery', () {
     test('a search sends the level it was told, never one it invented', () async {
@@ -423,47 +289,4 @@ void main() {
     });
   });
 
-  group('the transport itself', () {
-    test('the bearer token is read fresh from the session', () async {
-      route('GET /v1/me', (_) => profileJson());
-      await dependencies.account.profile();
-      expect(
-        backend.to('/v1/me').last.headers['authorization'],
-        'Bearer access',
-      );
-    });
-
-    test('Bengali sends no lang parameter; English sends one', () async {
-      route('GET /v1/me', (_) => profileJson());
-      await dependencies.account.profile();
-      expect(
-        backend.to('/v1/me').last.url.queryParameters.containsKey('lang'),
-        isFalse,
-      );
-      dependencies.locale = const Locale('en');
-      await dependencies.account.profile();
-      expect(backend.to('/v1/me').last.url.queryParameters['lang'], 'en');
-    });
-
-    test('a failure arrives as the server\'s own sentence', () async {
-      route('GET /v1/me', (_) => errorBody('config_unavailable', 'পরে দেখুন'));
-      backend.statuses['GET /v1/me'] = 503;
-      await expectLater(
-        dependencies.account.profile(),
-        throwsA(
-          isA<ApiError>()
-              .having((ApiError e) => e.code, 'code', 'config_unavailable')
-              .having((ApiError e) => e.message, 'message', 'পরে দেখুন'),
-        ),
-      );
-    });
-
-    test('signing out clears the tokens and the cached screens', () async {
-      route('GET /v1/me', (_) => profileJson());
-      await dependencies.account.profile();
-      await dependencies.signOut();
-      expect(dependencies.session.isSignedIn, isFalse);
-      expect(await dependencies.api.cached('/v1/me'), isNull);
-    });
-  });
 }
