@@ -20,13 +20,20 @@ import (
 
 func newIdentityService(t *testing.T, sessions *fakeSessionStore) (contract.IdentityContract, *token.Signer) {
 	t.Helper()
+	service, signer, _ := newIdentityServiceWithDirectory(t, sessions)
+	return service, signer
+}
+
+func newIdentityServiceWithDirectory(t *testing.T, sessions *fakeSessionStore) (contract.IdentityContract, *token.Signer, *fakeDirectory) {
+	t.Helper()
 	signer, err := token.NewSigner(
 		[]byte("a-service-test-signing-key-32-bytes-x"), "goklay-test",
 		token.WithClock(func() time.Time { return signInAt }))
 	if err != nil {
 		t.Fatalf("NewSigner: %v", err)
 	}
-	return application.NewService(signer, sessions), signer
+	directory := newDirectory()
+	return application.NewService(signer, sessions, directory), signer, directory
 }
 
 func TestTheContractVerifiesATokenAndReportsTheCaller(t *testing.T) {
@@ -99,6 +106,47 @@ func TestTheContractSurfacesAStoreFailure(t *testing.T) {
 	service, _ := newIdentityService(t, sessions)
 
 	if err := service.RevokeUserSessions(context.Background(), "usr_1"); errs.KindOf(err) != errs.KindUnavailable {
+		t.Errorf("error = %v, want unavailable", err)
+	}
+}
+
+// TestPhoneForOverTheContract is notification's own lookup (P14): the number
+// behind an account id, so an undelivered push has somewhere else to go.
+func TestPhoneForOverTheContract(t *testing.T) {
+	ctx := context.Background()
+	service, _, directory := newIdentityServiceWithDirectory(t, newSessionStore())
+
+	phone, err := domain.NewPhone("+8801711000001")
+	if err != nil {
+		t.Fatalf("NewPhone: %v", err)
+	}
+	userID, _, err := directory.EnsureUser(ctx, phone, domain.RoleCustomer)
+	if err != nil {
+		t.Fatalf("EnsureUser: %v", err)
+	}
+
+	got, found, err := service.PhoneFor(ctx, userID)
+	if err != nil {
+		t.Fatalf("PhoneFor: %v", err)
+	}
+	if !found || got != phone.String() {
+		t.Errorf("PhoneFor = %q, %v, want %q, true", got, found, phone.String())
+	}
+}
+
+func TestPhoneForAnUnknownAccountIsNotFound(t *testing.T) {
+	service, _, _ := newIdentityServiceWithDirectory(t, newSessionStore())
+	_, found, err := service.PhoneFor(context.Background(), "usr_missing")
+	if err != nil || found {
+		t.Errorf("PhoneFor(missing) = found=%v, err=%v", found, err)
+	}
+}
+
+func TestPhoneForSurfacesAStoreFailure(t *testing.T) {
+	service, _, directory := newIdentityServiceWithDirectory(t, newSessionStore())
+	directory.phoneErr = errStore
+
+	if _, _, err := service.PhoneFor(context.Background(), "usr_1"); errs.KindOf(err) != errs.KindUnavailable {
 		t.Errorf("error = %v, want unavailable", err)
 	}
 }

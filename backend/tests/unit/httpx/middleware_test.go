@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -265,6 +266,36 @@ func TestLoggingIgnoresASecondWriteHeader(t *testing.T) {
 	if lines[0]["status"] != float64(201) {
 		t.Errorf("status = %v, want the first status to win", lines[0]["status"])
 	}
+}
+
+// Logging wraps every response, including a streaming one (tracking's SSE
+// endpoint, P14). If the wrapper did not forward Flush, a stream would sit
+// fully buffered until the handler returned — which for a stream is never.
+func TestLoggingForwardsFlush(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+	})
+	rec := httptest.NewRecorder()
+	httpx.Logging(slog.New(slog.NewTextHandler(io.Discard, nil)))(h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !rec.Flushed {
+		t.Fatal("Flush was not forwarded to the underlying ResponseWriter")
+	}
+}
+
+// notAFlusher is a ResponseWriter with no Flush method of its own, standing
+// in for whatever the real server hands the chain in a context where
+// streaming was never possible.
+type notAFlusher struct{ http.ResponseWriter }
+
+// A Flush call must not panic when the underlying writer cannot flush at all
+// — a no-op is the correct answer, not a type assertion failure.
+func TestLoggingFlushIsANoOpWhenTheUnderlyingWriterCannot(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+	})
+	rec := httptest.NewRecorder()
+	httpx.Logging(slog.New(slog.NewTextHandler(io.Discard, nil)))(h).
+		ServeHTTP(notAFlusher{rec}, httptest.NewRequest(http.MethodGet, "/", nil))
 }
 
 func TestCORSAllowsAConfiguredOrigin(t *testing.T) {

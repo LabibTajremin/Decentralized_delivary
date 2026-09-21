@@ -123,4 +123,14 @@ type UserDirectory interface {
 	// account if this is the first sign-in. The bool reports whether it was
 	// created, which the client uses to decide whether to collect a name.
 	EnsureUser(ctx context.Context, phone domain.Phone, role domain.Role) (userID string, created bool, err error)
+
+	// PhoneFor is the reverse lookup: the number behind an account id.
+	//
+	// Added for notification's SMS fallback (P14) — a push that cannot be
+	// delivered needs the one other channel this platform has for reaching a
+	// person, and the number identity already collected at sign-in is that
+	// channel. False for an id that does not exist or belongs to a suspended
+	// account, so a stale reference cannot be used to text someone who closed
+	// their account.
+	PhoneFor(ctx context.Context, userID string) (phone domain.Phone, found bool, err error)
 }

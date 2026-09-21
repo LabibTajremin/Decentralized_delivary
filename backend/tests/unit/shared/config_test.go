@@ -28,18 +28,22 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.ShutdownGap != 10*time.Second {
 		t.Errorf("ShutdownGap = %v, want 10s", cfg.ShutdownGap)
 	}
+	if cfg.TrackingStreamInterval != 3*time.Second {
+		t.Errorf("TrackingStreamInterval = %v, want 3s", cfg.TrackingStreamInterval)
+	}
 }
 
 func TestLoadReadsOverrides(t *testing.T) {
 	// Staging, not production: the production path has its own strict checks
 	// covered by TestProductionRequiresRealSecrets and friends.
 	cfg, err := config.Load(config.FromMap(map[string]string{
-		"APP_ENV":          "staging",
-		"API_ADDR":         ":9000",
-		"DATABASE_URL":     "postgres://db",
-		"REDIS_URL":        "redis://cache",
-		"LOG_LEVEL":        "warn",
-		"SHUTDOWN_TIMEOUT": "45s",
+		"APP_ENV":                  "staging",
+		"API_ADDR":                 ":9000",
+		"DATABASE_URL":             "postgres://db",
+		"REDIS_URL":                "redis://cache",
+		"LOG_LEVEL":                "warn",
+		"SHUTDOWN_TIMEOUT":         "45s",
+		"TRACKING_STREAM_INTERVAL": "500ms",
 	}))
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
@@ -49,6 +53,9 @@ func TestLoadReadsOverrides(t *testing.T) {
 	}
 	if cfg.ShutdownGap != 45*time.Second {
 		t.Errorf("ShutdownGap = %v, want 45s", cfg.ShutdownGap)
+	}
+	if cfg.TrackingStreamInterval != 500*time.Millisecond {
+		t.Errorf("TrackingStreamInterval = %v, want 500ms", cfg.TrackingStreamInterval)
 	}
 }
 

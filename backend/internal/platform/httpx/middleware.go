@@ -100,6 +100,17 @@ func (s *statusRecorder) WriteHeader(status int) {
 	}
 }
 
+// Flush forwards to the wrapped writer when it can — embedding
+// http.ResponseWriter as an interface field promotes only that interface's own
+// methods, not Flush, so without this a streaming response (tracking's SSE
+// endpoint, P14) would sit fully buffered behind Logging until the handler
+// returned, defeating the entire point of a stream.
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func (s *statusRecorder) Write(b []byte) (int, error) {
 	if s.status == 0 {
 		s.status = http.StatusOK

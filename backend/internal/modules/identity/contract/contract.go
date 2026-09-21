@@ -43,4 +43,13 @@ type IdentityContract interface {
 	// suspended or a merchant is delisted, so losing permission takes effect at
 	// once rather than when the last token happens to expire.
 	RevokeUserSessions(ctx context.Context, userID string) error
+
+	// PhoneFor is the reverse lookup: the number behind an account id.
+	//
+	// A small, targeted addition for notification's SMS fallback (P14),
+	// mirroring how dispatch grew PartnerOfUser for payment's COD ledger in
+	// P13: the one number this platform already holds for reaching a person
+	// when a push cannot be delivered is the number they signed in with.
+	// False for an id that does not exist or belongs to a suspended account.
+	PhoneFor(ctx context.Context, userID string) (phone string, found bool, err error)
 }

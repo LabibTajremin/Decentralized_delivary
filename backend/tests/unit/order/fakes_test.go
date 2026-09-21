@@ -20,6 +20,7 @@ import (
 	merchantcontract "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/order/domain"
+	notificationx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/notification"
 	paymentx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/payment"
 	usercontract "github.com/rootlogic-lab/delivery/backend/internal/modules/user/contract"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
@@ -350,3 +351,24 @@ func (p *fakePayment) RecordCashCollection(_ context.Context, orderID, partnerID
 }
 
 var _ paymentx.Service = (*fakePayment)(nil)
+
+// fakeNotify stands in for notification's delivery hook.
+//
+// The order tells a customer about the milestones worth interrupting them
+// for. Best-effort, the same as dispatch and payment: a notification outage
+// must not stop a shop, a rider or an admin moving an order along.
+type fakeNotify struct {
+	err  error
+	sent []sentNotification
+}
+
+type sentNotification struct {
+	userID, title, body string
+}
+
+func (n *fakeNotify) Notify(_ context.Context, userID, title, body string) error {
+	n.sent = append(n.sent, sentNotification{userID, title, body})
+	return n.err
+}
+
+var _ notificationx.Service = (*fakeNotify)(nil)

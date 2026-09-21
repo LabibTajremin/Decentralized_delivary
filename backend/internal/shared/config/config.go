@@ -84,6 +84,13 @@ type Config struct {
 	// means none, which is correct for a mobile-only deployment.
 	CORSAllowedOrigins []string
 
+	// TrackingStreamInterval is how often the live order-tracking endpoint
+	// polls order and dispatch for a change to send. A deploy-time knob, not
+	// an Appendix B business rule: it trades server load against how quickly
+	// a customer's screen updates, not anything a division's operations team
+	// would tune.
+	TrackingStreamInterval time.Duration
+
 	// LogLevel is debug, info, warn or error.
 	LogLevel string
 
@@ -229,15 +236,16 @@ func Load(lookup Lookup) (Config, error) {
 	production := env == EnvProduction
 
 	cfg := Config{
-		Env:                env,
-		APIAddr:            l.String("API_ADDR", ":8080"),
-		PublicBaseURL:      l.URL("PUBLIC_BASE_URL", "http://localhost:8080"),
-		DatabaseURL:        l.Required("DATABASE_URL"),
-		RedisURL:           l.Required("REDIS_URL"),
-		JWTIssuer:          l.String("JWT_ISSUER", "goklay"),
-		CORSAllowedOrigins: l.CSV("CORS_ALLOWED_ORIGINS"),
-		LogLevel:           l.String("LOG_LEVEL", "info"),
-		ShutdownGap:        l.Duration("SHUTDOWN_TIMEOUT", 10*time.Second),
+		Env:                    env,
+		APIAddr:                l.String("API_ADDR", ":8080"),
+		PublicBaseURL:          l.URL("PUBLIC_BASE_URL", "http://localhost:8080"),
+		DatabaseURL:            l.Required("DATABASE_URL"),
+		RedisURL:               l.Required("REDIS_URL"),
+		JWTIssuer:              l.String("JWT_ISSUER", "goklay"),
+		CORSAllowedOrigins:     l.CSV("CORS_ALLOWED_ORIGINS"),
+		LogLevel:               l.String("LOG_LEVEL", "info"),
+		ShutdownGap:            l.Duration("SHUTDOWN_TIMEOUT", 10*time.Second),
+		TrackingStreamInterval: l.Duration("TRACKING_STREAM_INTERVAL", 3*time.Second),
 	}
 
 	// The signing key is required in production and defaulted elsewhere, so a

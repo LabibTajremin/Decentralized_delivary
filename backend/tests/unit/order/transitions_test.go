@@ -2,6 +2,7 @@ package order
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -498,6 +499,100 @@ func TestATransitionWithNoPaymentWired(t *testing.T) {
 	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
 	move(t, r, placed.ID, domain.StatusPickedUp, "", rider)
 	if view := move(t, r, placed.ID, domain.StatusDelivered, "", rider); view.Status != "delivered" {
+		t.Fatalf("view = %+v", view)
+	}
+}
+
+// The order tells the customer on the milestones worth interrupting them
+// for — pickup and delivery — and stays quiet on every other move, which
+// happens far more often and would just be noise mid-wait.
+func TestTheOrderTellsTheCustomerOnPickupAndDelivery(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	if len(r.notify.sent) != 0 {
+		t.Fatalf("the customer was told about a shop-side move: %+v", r.notify.sent)
+	}
+
+	move(t, r, placed.ID, domain.StatusPickedUp, "", rider)
+	if len(r.notify.sent) != 1 || r.notify.sent[0].userID != "USR-1" {
+		t.Fatalf("sent = %+v", r.notify.sent)
+	}
+
+	move(t, r, placed.ID, domain.StatusDelivered, "", rider)
+	if len(r.notify.sent) != 2 {
+		t.Fatalf("sent = %+v, want a second message on delivery", r.notify.sent)
+	}
+}
+
+// A shop's rejection and a customer's cancellation both tell the customer
+// why, when a reason was given.
+func TestTheOrderTellsTheCustomerWhyOnRejectionAndCancellation(t *testing.T) {
+	r := newRig()
+	rejected := place(t, r, "rej")
+	move(t, r, rejected.ID, domain.StatusRejected, "কাচ্চি শেষ হয়ে গেছে", shopkeeper())
+	if len(r.notify.sent) != 1 || !strings.Contains(r.notify.sent[0].body, "কাচ্চি শেষ হয়ে গেছে") {
+		t.Fatalf("sent = %+v", r.notify.sent)
+	}
+
+	cancelled := place(t, r, "can")
+	move(t, r, cancelled.ID, domain.StatusCancelled, "changed my mind", customer())
+	if len(r.notify.sent) != 2 || !strings.Contains(r.notify.sent[1].body, "changed my mind") {
+		t.Fatalf("sent = %+v", r.notify.sent)
+	}
+}
+
+// A rider who could not complete a delivery after collecting it tells the
+// customer why, the same as a rejection or a cancellation.
+func TestTheOrderTellsTheCustomerWhyOnAFailedDelivery(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPickedUp, "", rider)
+
+	move(t, r, placed.ID, domain.StatusFailed, "recipient unreachable", rider)
+	last := r.notify.sent[len(r.notify.sent)-1]
+	if !strings.Contains(last.body, "recipient unreachable") {
+		t.Fatalf("sent = %+v", last)
+	}
+}
+
+// A notification outage must not stop a shop, a rider or an admin moving an
+// order along — the same tolerance dispatch and payment outages get.
+func TestANotificationOutageDoesNotBlockAMove(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	r.notify.err = errBoom
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	if view := move(t, r, placed.ID, domain.StatusPickedUp, "", rider); view.Status != "picked_up" {
+		t.Fatalf("view = %+v", view)
+	}
+}
+
+// An order module wired without notification — which is how cmd/api builds
+// it before UseNotification is called — must not panic on a transition.
+func TestATransitionWithNoNotificationWired(t *testing.T) {
+	r := newRig()
+	placed := place(t, r, "")
+	r.transitions.UseNotification(nil)
+	rider := application.Caller{Actor: domain.ActorPartner, ID: "PTR-1"}
+
+	move(t, r, placed.ID, domain.StatusAccepted, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusPreparing, "", shopkeeper())
+	move(t, r, placed.ID, domain.StatusReady, "", shopkeeper())
+	if view := move(t, r, placed.ID, domain.StatusPickedUp, "", rider); view.Status != "picked_up" {
 		t.Fatalf("view = %+v", view)
 	}
 }

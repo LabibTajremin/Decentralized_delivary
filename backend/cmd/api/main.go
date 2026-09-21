@@ -46,6 +46,11 @@ import (
 	merchantapp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/application"
 	merchantpg "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/infrastructure/persistence/postgres"
 	merchanthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/merchant/transport/http"
+	notificationapp "github.com/rootlogic-lab/delivery/backend/internal/modules/notification/application"
+	notificationpg "github.com/rootlogic-lab/delivery/backend/internal/modules/notification/infrastructure/persistence/postgres"
+	notificationpush "github.com/rootlogic-lab/delivery/backend/internal/modules/notification/infrastructure/push/log"
+	notificationsms "github.com/rootlogic-lab/delivery/backend/internal/modules/notification/infrastructure/sms/log"
+	notificationhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/notification/transport/http"
 	orderapp "github.com/rootlogic-lab/delivery/backend/internal/modules/order/application"
 	ordercodes "github.com/rootlogic-lab/delivery/backend/internal/modules/order/infrastructure/codes"
 	orderpg "github.com/rootlogic-lab/delivery/backend/internal/modules/order/infrastructure/persistence/postgres"
@@ -56,6 +61,8 @@ import (
 	paymentpg "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/infrastructure/persistence/postgres"
 	paymenthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/transport/http"
 	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
+	trackingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/tracking/application"
+	trackinghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/tracking/transport/http"
 	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
 	userpg "github.com/rootlogic-lab/delivery/backend/internal/modules/user/infrastructure/persistence/postgres"
 	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
@@ -178,6 +185,10 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	sessionStore := identityredis.NewSessionStore(redisClient)
 	limiter := identityredis.NewRateLimiter(redisClient)
 	directory := identitypg.NewFromPool(pool, ids)
+	// identityService exposes IdentityContract to other modules — until P14,
+	// nothing needed to reach identity this way; notification's SMS fallback
+	// (PhoneFor) is the first real caller.
+	identityService := identityapp.NewService(signer, sessionStore, directory)
 	configService := cfgapp.NewService(cfgapp.NewResolveUseCase(cfgRepo))
 
 	identityhttp.NewHandler(
@@ -328,6 +339,31 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// exists — the same service-level cycle as order and dispatch above.
 	orderTransitions.UsePayment(paymentService)
 
+	// Notification (P14). Push first, falling back to SMS — both log-only
+	// stand-ins until a real provider is chosen, both refusing to be
+	// constructed in production for the same reason identity's log SMS
+	// sender does: a message written to the log is readable by anyone with
+	// log access. identityService supplies the one lookup a fallback needs
+	// (PhoneFor) directly, with no adapter, the same as dispatchService and
+	// orderService are handed to other modules' seams below.
+	notificationRepo := notificationpg.NewFromPool(pool)
+	notificationPush, err := notificationpush.New(logger, cfg.IsProduction())
+	if err != nil {
+		return nil, err
+	}
+	notificationSMS, err := notificationsms.New(logger, cfg.IsProduction())
+	if err != nil {
+		return nil, err
+	}
+	notificationNotify := notificationapp.NewNotifyUseCase(
+		notificationRepo, notificationPush, notificationSMS, identityService, systemClock, ids,
+	)
+	notificationService := notificationapp.NewService(notificationNotify)
+	// Not a service-level cycle — notification never calls back into
+	// order — but wired the same way as dispatch and payment for one
+	// consistent pattern.
+	orderTransitions.UseNotification(notificationService)
+
 	dispatchhttp.NewHandler(
 		dispatchapp.NewPartnerUseCase(
 			dispatchRepo, orderService, geoService, configService, systemClock, ids,
@@ -373,6 +409,31 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 			return principal.UserID, ok
 		},
 		!cfg.IsProduction(),
+	).Register(mux)
+
+	notificationhttp.NewHandler(
+		notificationapp.NewRegisterDeviceUseCase(notificationRepo),
+		notificationapp.NewReadUseCase(notificationRepo),
+		notificationhttp.Guard(authenticator.Authenticated()),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+	).Register(mux)
+
+	// Tracking (P14). Owns no storage of its own: order already has the
+	// status and the history, dispatch already has where the rider is, and
+	// orderService/dispatchService are handed to its external/ seams
+	// directly — both already implement methods of the exact shape tracking
+	// needs, with no adapter.
+	trackinghttp.NewHandler(
+		trackingapp.NewSnapshotUseCase(orderService, dispatchService),
+		cfg.TrackingStreamInterval,
+		trackinghttp.Guard(authenticator.Authenticated()),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
 	).Register(mux)
 
 	// Demo imagery is served only outside production, so generated placeholder

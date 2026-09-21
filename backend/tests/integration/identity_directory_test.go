@@ -192,6 +192,85 @@ func TestASuspendedAccountCannotSignIn(t *testing.T) {
 	})
 }
 
+// TestPhoneForFindsTheAccountsNumber is notification's own lookup (P14),
+// exercised against the real database rather than a fake so the query and
+// the domain.Phone round trip are proven together.
+func TestPhoneForFindsTheAccountsNumber(t *testing.T) {
+	withDirectory(t, func(ctx context.Context, _ pgx.Tx, dir *identitypg.Directory) {
+		phone := mustPhone(t, "01712345678")
+		userID, _, err := dir.EnsureUser(ctx, phone, domain.RoleCustomer)
+		if err != nil {
+			t.Fatalf("EnsureUser: %v", err)
+		}
+
+		got, found, err := dir.PhoneFor(ctx, userID)
+		if err != nil {
+			t.Fatalf("PhoneFor: %v", err)
+		}
+		if !found || got.String() != phone.String() {
+			t.Errorf("PhoneFor = %v, %v, want %s, true", got, found, phone.String())
+		}
+	})
+}
+
+func TestPhoneForAnUnknownAccountIsNotFound(t *testing.T) {
+	withDirectory(t, func(ctx context.Context, _ pgx.Tx, dir *identitypg.Directory) {
+		_, found, err := dir.PhoneFor(ctx, "usr_missing")
+		if err != nil || found {
+			t.Errorf("PhoneFor(missing) = found=%v, err=%v", found, err)
+		}
+	})
+}
+
+// A suspended account's number must not be handed out — texting someone who
+// closed their account is not what this lookup is for.
+func TestPhoneForASuspendedAccountIsNotFound(t *testing.T) {
+	withDirectory(t, func(ctx context.Context, tx pgx.Tx, dir *identitypg.Directory) {
+		phone := mustPhone(t, "01712345678")
+		userID, _, err := dir.EnsureUser(ctx, phone, domain.RoleCustomer)
+		if err != nil {
+			t.Fatalf("EnsureUser: %v", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE identity_accounts SET is_active = FALSE WHERE id = $1`, userID); err != nil {
+			t.Fatalf("suspend: %v", err)
+		}
+
+		_, found, err := dir.PhoneFor(ctx, userID)
+		if err != nil || found {
+			t.Errorf("PhoneFor(suspended) = found=%v, err=%v", found, err)
+		}
+	})
+}
+
+// A row whose stored phone does not parse can only mean the stored value and
+// domain.NewPhone's rules have drifted since EnsureUser wrote it — reachable
+// only by writing the row directly, the way this test does.
+func TestPhoneForARowThatDoesNotParse(t *testing.T) {
+	withDirectory(t, func(ctx context.Context, tx pgx.Tx, dir *identitypg.Directory) {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO identity_accounts (id, phone, role) VALUES ('usr_bad', 'not-a-phone', 'customer')`); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+		if _, _, err := dir.PhoneFor(ctx, "usr_bad"); err == nil {
+			t.Error("PhoneFor must fail on a stored value that no longer parses")
+		}
+	})
+}
+
+func TestPhoneForSurfacesAClosedConnection(t *testing.T) {
+	ctx := context.Background()
+	conn := connect(t)
+	if err := conn.Close(ctx); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	dir := identitypg.New(conn, id.NewGen(clock.System{}, nil))
+
+	if _, _, err := dir.PhoneFor(ctx, "usr_1"); err == nil {
+		t.Error("PhoneFor on a closed connection must fail")
+	}
+}
+
 func TestTheDatabaseRefusesAnUnknownRole(t *testing.T) {
 	withDirectory(t, func(ctx context.Context, tx pgx.Tx, _ *identitypg.Directory) {
 		_, err := tx.Exec(ctx, `

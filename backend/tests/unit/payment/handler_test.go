@@ -317,12 +317,13 @@ func TestEveryRouteRefusesAnAnonymousCaller(t *testing.T) {
 
 func TestMalformedRequestsAreRefused(t *testing.T) {
 	r := newRig()
-	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", true)
 
 	cases := []struct{ name, method, target, body string }{
 		{"checkout", http.MethodPost, "/v1/payments/checkout", `{"order_id":`},
 		{"refund", http.MethodPost, "/v1/admin/payments/ord_1/refund", `not json`},
 		{"reconcile", http.MethodPost, "/v1/admin/payments/cod/PTR-1/reconcile", `{`},
+		{"simulate", http.MethodPost, "/v1/payments/manual/complete", `not json`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -330,6 +331,103 @@ func TestMalformedRequestsAreRefused(t *testing.T) {
 				t.Errorf("status = %d, want 400", status)
 			}
 		})
+	}
+}
+
+// Every admin read and write surfaces a downstream failure rather than a
+// panic or an empty 200 — checked once per handler that has its own storage
+// call beyond the ones TestDownstreamFailuresReachTheClient already covers.
+func TestMoreDownstreamFailuresReachTheClient(t *testing.T) {
+	t.Run("admin payment read", func(t *testing.T) {
+		r := newRig()
+		r.repo.latestForOrderErr = errBoom
+		mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+		if status := call(t, mux, http.MethodGet, "/v1/admin/payments/ord_1", "", nil, nil); status != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want 503", status)
+		}
+	})
+
+	t.Run("admin ledger read", func(t *testing.T) {
+		r := newRig()
+		r.repo.forPartnerErr = errBoom
+		mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+		if status := call(t, mux, http.MethodGet, "/v1/admin/payments/cod/PTR-1", "", nil, nil); status != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want 503", status)
+		}
+	})
+
+	t.Run("reconcile", func(t *testing.T) {
+		r := newRig()
+		r.repo.remitErr = errBoom
+		mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+		body := `{"collection_ids":["col_1"],"reference":"ref_1"}`
+		if status := call(t, mux, http.MethodPost, "/v1/admin/payments/cod/PTR-1/reconcile", body, nil, nil); status != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want 503", status)
+		}
+	})
+
+	t.Run("simulate on an unknown payment", func(t *testing.T) {
+		r := newRig()
+		mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", true)
+		body := `{"payment_id":"PAY-MISSING","succeeded":true}`
+		if status := call(t, mux, http.MethodPost, "/v1/payments/manual/complete", body, nil, nil); status != http.StatusNotFound {
+			t.Errorf("status = %d, want 404", status)
+		}
+	})
+
+	// The refund itself succeeds, and only the read-back that composes the
+	// response afterwards fails — proven with a call-counted failure, since
+	// both calls go through the same repository method a millisecond apart.
+	t.Run("refund succeeds but the read back fails", func(t *testing.T) {
+		r, _ := capturedPayment(t, 50000)
+		r.repo.latestForOrderErr = errBoom
+		r.repo.latestForOrderErrAfter = 1
+		mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+		if status := call(t, mux, http.MethodPost, "/v1/admin/payments/ord_1/refund", `{"reason":"x"}`, nil, nil); status != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want 503", status)
+		}
+	})
+}
+
+// The full, successful shape of a refund over HTTP: a captured payment goes
+// to refunded and the response reflects it, not just the intermediate
+// failure paths above.
+func TestRefundOverHTTP(t *testing.T) {
+	r, _ := capturedPayment(t, 50000)
+	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+
+	var got paymentResponse
+	status := call(t, mux, http.MethodPost, "/v1/admin/payments/ord_1/refund", `{"reason":"a customer complaint"}`, nil, &got)
+	if status != http.StatusOK || got.Status != "refunded" {
+		t.Fatalf("status = %d, body = %+v", status, got)
+	}
+}
+
+// A checkout's own use case can fail after decoding cleanly — reached over
+// HTTP, not just at the application layer.
+func TestCheckoutUseCaseFailureOverHTTP(t *testing.T) {
+	r := newRig()
+	r.order.orders["ord_1"] = pendingOrder("ord_1", "usr_1", 50000)
+	r.repo.pendingForOrderErr = errBoom
+	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+
+	if status := call(t, mux, http.MethodPost, "/v1/payments/checkout", `{"order_id":"ord_1"}`, nil, nil); status != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", status)
+	}
+}
+
+// A webhook body over the cap is refused before anything tries to verify a
+// signature over it — the same defense every other JSON body on this
+// service gets, applied by hand here because a webhook's signature must be
+// checked over the exact bytes sent, which strict JSON decoding does not
+// preserve.
+func TestAnOversizedWebhookBodyIsRefused(t *testing.T) {
+	r := newRig()
+	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+
+	huge := strings.Repeat("a", (1<<20)+1)
+	if status := call(t, mux, http.MethodPost, "/v1/payments/manual/webhook", huge, nil, nil); status != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", status)
 	}
 }
 

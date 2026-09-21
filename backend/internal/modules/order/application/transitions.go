@@ -9,6 +9,7 @@ import (
 	cfg "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/config"
 	dispatchx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/dispatch"
 	merchantx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/merchant"
+	notificationx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/notification"
 	paymentx "github.com/rootlogic-lab/delivery/backend/internal/modules/order/external/payment"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/clock"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
@@ -22,13 +23,14 @@ import (
 // lives in one table (domain/status.go). Separate use cases per role would be
 // four copies of the same check, and the copies would drift.
 type TransitionUseCase struct {
-	repo     ports.Repository
-	merchant merchantx.Service
-	config   cfg.Service
-	dispatch dispatchx.Service
-	payment  paymentx.Service
-	clock    clock.Clock
-	ids      id.Generator
+	repo         ports.Repository
+	merchant     merchantx.Service
+	config       cfg.Service
+	dispatch     dispatchx.Service
+	payment      paymentx.Service
+	notification notificationx.Service
+	clock        clock.Clock
+	ids          id.Generator
 }
 
 // NewTransitionUseCase wires the use case.
@@ -61,6 +63,14 @@ func (uc *TransitionUseCase) UseDispatch(d dispatchx.Service) { uc.dispatch = d 
 // when a rider marks a delivery complete, closing a service-level cycle that
 // would otherwise be a package cycle the compiler refuses.
 func (uc *TransitionUseCase) UsePayment(p paymentx.Service) { uc.payment = p }
+
+// UseNotification supplies the notification seam after construction.
+//
+// Not a cycle the way dispatch and payment are — notification never calls
+// back into order — but the same setter shape all the same, so cmd/api wires
+// every cross-module seam the one way rather than half by constructor
+// argument and half by setter.
+func (uc *TransitionUseCase) UseNotification(n notificationx.Service) { uc.notification = n }
 
 // Caller is who is asking, and on whose behalf.
 type Caller struct {
@@ -124,6 +134,7 @@ func (uc *TransitionUseCase) Execute(ctx context.Context, orderID string, to dom
 
 	uc.tellDispatch(ctx, order, reason)
 	uc.tellPayment(ctx, order, event)
+	uc.tellCustomer(ctx, order, reason)
 
 	return uc.render(ctx, order, caller, now), nil
 }
@@ -177,6 +188,53 @@ func (uc *TransitionUseCase) tellPayment(ctx context.Context, order domain.Order
 		return
 	}
 	_ = uc.payment.RecordCashCollection(ctx, order.ID, event.ActorID, order.Charges.Total.Minor())
+}
+
+// tellCustomer lets a customer know their order moved, on the milestones
+// worth interrupting them for.
+//
+// Best-effort, the same as tellDispatch and tellPayment: a notification
+// outage must not stop a shop, a rider or an admin moving an order along —
+// the message that could not be sent is not a reason to undo the move.
+// Composed in Bengali (1.4's default): a system-triggered message has no
+// request to read a `lang` from the way a screen read does.
+func (uc *TransitionUseCase) tellCustomer(ctx context.Context, order domain.Order, reason string) {
+	if uc.notification == nil {
+		return
+	}
+	title, body, ok := notificationText(order, reason)
+	if !ok {
+		return
+	}
+	_ = uc.notification.Notify(ctx, order.CustomerID, title, body)
+}
+
+// notificationText composes what a customer is told for the statuses worth
+// telling them about. The bool is false for every other status, so a shop
+// accepting an order does not buzz a phone for a milestone the customer does
+// not need mid-wait.
+func notificationText(order domain.Order, reason string) (title, body string, ok bool) {
+	switch order.Status {
+	case domain.StatusPickedUp:
+		return "আপনার অর্ডার পথে আছে", "অর্ডার " + order.Code + " একজন রাইডার নিয়ে বেরিয়েছেন।", true
+	case domain.StatusDelivered:
+		return "অর্ডার পৌঁছে গেছে", "অর্ডার " + order.Code + " পৌঁছে দেওয়া হয়েছে। খাবার উপভোগ করুন!", true
+	case domain.StatusCancelled:
+		return "অর্ডার বাতিল হয়েছে", "অর্ডার " + order.Code + " বাতিল করা হয়েছে।" + reasonSuffix(reason), true
+	case domain.StatusRejected:
+		return "দোকান অর্ডারটি নিতে পারেনি", "অর্ডার " + order.Code + " দোকান নিতে পারেনি।" + reasonSuffix(reason), true
+	case domain.StatusFailed:
+		return "অর্ডার পৌঁছানো যায়নি", "অর্ডার " + order.Code + " পৌঁছে দেওয়া যায়নি।" + reasonSuffix(reason), true
+	default:
+		return "", "", false
+	}
+}
+
+func reasonSuffix(reason string) string {
+	if reason == "" {
+		return ""
+	}
+	return " কারণ: " + reason
 }
 
 // CancelStatus reports whether the customer may still call an order off,

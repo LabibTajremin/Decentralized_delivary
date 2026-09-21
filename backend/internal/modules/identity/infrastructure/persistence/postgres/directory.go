@@ -71,3 +71,28 @@ func (d *Directory) EnsureUser(ctx context.Context, phone domain.Phone, role dom
 	// is how "was this their first sign-in" is known without a second query.
 	return storedID, storedID == newID, nil
 }
+
+// PhoneFor is the reverse lookup: the number behind an account id.
+func (d *Directory) PhoneFor(ctx context.Context, userID string) (domain.Phone, bool, error) {
+	var raw string
+	var isActive bool
+	err := d.db.QueryRow(ctx, `
+		SELECT phone, is_active FROM identity_accounts WHERE id = $1`,
+		userID).Scan(&raw, &isActive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Phone{}, false, nil
+	}
+	if err != nil {
+		return domain.Phone{}, false, fmt.Errorf("phone for account: %w", err)
+	}
+	if !isActive {
+		return domain.Phone{}, false, nil
+	}
+	phone, err := domain.NewPhone(raw)
+	if err != nil {
+		// A phone stored by EnsureUser has already been validated once; this
+		// can only mean the stored value and the validator have drifted.
+		return domain.Phone{}, false, fmt.Errorf("stored phone %q does not parse: %w", raw, err)
+	}
+	return phone, true, nil
+}

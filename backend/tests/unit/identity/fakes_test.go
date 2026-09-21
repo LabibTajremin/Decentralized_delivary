@@ -328,7 +328,9 @@ func (f *fakeSMS) SendOTP(_ context.Context, p domain.Phone, code string) error 
 // fakeDirectory hands out account ids.
 type fakeDirectory struct {
 	err      error
+	phoneErr error
 	known    map[string]string
+	byID     map[string]string
 	nextID   string
 	ensureNo int
 }
@@ -347,7 +349,27 @@ func (f *fakeDirectory) EnsureUser(_ context.Context, p domain.Phone, role domai
 		return id, false, nil
 	}
 	f.known[key] = f.nextID
+	if f.byID == nil {
+		f.byID = map[string]string{}
+	}
+	f.byID[f.nextID] = p.String()
 	return f.nextID, true, nil
+}
+
+// phoneErr, when set, is what PhoneFor fails with.
+func (f *fakeDirectory) PhoneFor(_ context.Context, userID string) (domain.Phone, bool, error) {
+	if f.phoneErr != nil {
+		return domain.Phone{}, false, f.phoneErr
+	}
+	raw, ok := f.byID[userID]
+	if !ok {
+		return domain.Phone{}, false, nil
+	}
+	phone, err := domain.NewPhone(raw)
+	if err != nil {
+		return domain.Phone{}, false, err
+	}
+	return phone, true, nil
 }
 
 // fakeConfig serves the registry defaults, or whatever a test overrides.

@@ -1,7 +1,7 @@
 # BUILD STATE
-last_updated: 2026-09-17T00:00:00Z
-current_phase: P14
-current_task: P14.T01
+last_updated: 2026-09-21T00:00:00Z
+current_phase: P15
+current_task: P15.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -27,8 +27,8 @@ P16 is committed and pushed, run `./scripts/handover.sh`, tell the user P16 is
 done and P17 wants the model switched, and stop there. `CLAUDE.md` →
 "Which model runs which phase" has the whole procedure.
 
-Next action: **start P14 (Tracking & notifications)** — read
-`docs/build/phases/P14.md`, write its task list into a `## P14 tasks` section
+Next action: **start P15 (Admin & auto-tuning)** — read
+`docs/build/phases/P15.md`, write its task list into a `## P15 tasks` section
 below, and build it the way every other phase was built (`CLAUDE.md` → "How a
 phase goes").
 
@@ -74,7 +74,8 @@ P10 DONE       pricing — ALG-05 banding exact at the edges, the D2 surcharge, 
 P11 DONE       order — one transition table for four parties, idempotent placement, frozen prices, the free cancellation window
 P12 DONE       dispatch — nationwide partners (D1), D4's distance choice in the query, ALG-04 rounds with a clock, ALG-08 feed, the sweep
 P13 DONE       payment — PaymentContract only (2.6), idempotent webhooks, atomic COD reconciliation
-P14..P20 TODO
+P14 DONE       tracking & notification — SSE delivery stream, push tried on every device falling back to SMS
+P15..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -148,9 +149,9 @@ P07.T13 DONE  integration and E2E tests; coverage gate back at 100%
 P07.T14 DONE  docs/technical/catalogue.md, Appendix A note
 
 ## Next phase
-P14 — Tracking & notifications. Status and location streams deliver; SMS
-falls back when push fails. Depends on P11 (order event history) and P12
-(the dispatch job a rider's location updates against).
+P15 — Admin & auto-tuning. Every Appendix B variable admin-controllable per
+area; ALG-09 auto-tuner within admin-set bounds and logged; **the division
+ceiling still cannot be disabled**. Depends on P03 (config).
 
 ## Deployment plumbing (operator request, done)
 - `internal/platform/migrate` — versioned migrator, `schema_migrations`,
@@ -169,7 +170,7 @@ falls back when push fails. Depends on P11 (order event history) and P12
 
 ## Coverage
 backend total: 100.0%
-last verified: 2026-09-17 (local PostGIS 3.4)
+last verified: 2026-09-21 (local PostGIS 3.4)
 exclusions: cmd/api (ADR none — foundational, covered by e2e), cmd/migrate (ADR 0006)
 
 ## Notes for next session
@@ -361,6 +362,50 @@ P13.T09 DONE  docs/technical/payment.md
   tests (`TestPaymentContractIsSelfContained`,
   `TestPaymentDomainBorrowsNoOtherModulesTypes`) so the distinction does not
   have to be rediscovered next time a seam is added.
+
+## P14 tasks
+P14.T01 DONE  domain — tracking.Snapshot (status + live partner location, change detection); notification.Notification, notification.DeviceToken
+P14.T02 DONE  identity gains IdentityContract.PhoneFor (a targeted addition, same precedent as P13's PartnerOfUser); external/ seams: tracking → order + dispatch (both bare interfaces, no adapter — order.Order and dispatch.JobForOrder/PartnerOfUser already match structurally), notification → identity, order → notification
+P14.T03 DONE  application — tracking.SnapshotUseCase (scoped to the owning customer or the assigned partner); notification.NotifyUseCase (push tried on every device, falling back to SMS only when none worked), RegisterDeviceUseCase, ReadUseCase
+P14.T04 DONE  migration 0011 (notifications, device_tokens), Postgres repository; push/log and sms/log adapters, both refusing construction in production like identity's own LogSender; httpx.statusRecorder gains Flush() so an SSE stream survives the logging middleware
+P14.T05 DONE  contract + service — TrackingContract, NotificationContract; order wired to notification the same way it is wired to dispatch and payment (a service-level UseNotification setter), telling the customer on pickup, delivery, cancellation, rejection and a failed delivery
+P14.T06 DONE  transport — GET /v1/track/{orderId} (Server-Sent Events), POST /v1/me/device, GET /v1/me/notifications; OpenAPI
+P14.T07 DONE  unit, integration and E2E tests at 100%; real bugs found (see the notes below), plus P13's own outstanding gaps closed
+P14.T08 DONE  docs/technical/tracking.md, docs/technical/notification.md
+
+## What P14's tests found
+
+- **`httpx.Logging` silently broke every future streaming endpoint.**
+  `statusRecorder` embeds `http.ResponseWriter` as an interface field, and Go's
+  method promotion through an embedded interface promotes only that
+  interface's own methods — never `Flush`, which isn't part of
+  `http.ResponseWriter`. Before this phase nothing had ever needed to flush a
+  partial response, so the bug was latent rather than caught: a stream's
+  `w.(http.Flusher)` assertion would have failed the moment `Logging` sat in
+  front of it, always, in every environment. Found by reading the middleware
+  chain before writing the SSE handler, not by a failing test. Fixed with a
+  `Flush` method on `statusRecorder` that forwards to the real writer, covered
+  directly in `backend/tests/unit/httpx`.
+- **"Stop at the first device that accepts a push" was both a product bug and
+  the source of a flaky test.** A test asserting both of a user's two devices
+  were tried passed or failed depending on Go's (deliberately randomized) map
+  iteration order, because the use case stopped at the first success. The fix
+  was not to make the test's iteration deterministic — that would have hidden
+  a real design gap — but to try every registered device unconditionally: a
+  person signed in on a phone and a tablet should hear on both, and the fix
+  that makes the product behavior correct is the same one that makes the
+  outcome order-independent.
+- **P13's own coverage gaps had never actually been closed.** A background
+  verification process inherited at the start of this phase reported 100%
+  coverage and every gate green, and P13 was committed on the strength of that
+  log. Running `./scripts/verify.sh` fresh at the start of P14 found the exact
+  same payment repository (`Remit`, `Save`, `scanPayment`/`scanCollection`,
+  `ForPartner`) and handler (`startCheckout`, `refund`, `adminPayment`,
+  `adminLedger`, `reconcile`, `receiveWebhook`, `simulate`) gaps a prior
+  session's own notes had already flagged as outstanding — closed now,
+  alongside P14's own gaps, rather than trusting a stale log a second time.
+  `backend/tests/unit/payment/repository_errors_test.go` is new; the handler
+  gaps were closed by extending `handler_test.go`.
 
 ## P17 pre-brief (for whoever picks up the Flutter work)
 

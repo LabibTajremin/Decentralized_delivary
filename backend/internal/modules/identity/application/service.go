@@ -10,13 +10,14 @@ import (
 
 // Service implements contract.IdentityContract.
 type Service struct {
-	signer   ports.TokenSigner
-	sessions ports.SessionStore
+	signer    ports.TokenSigner
+	sessions  ports.SessionStore
+	directory ports.UserDirectory
 }
 
 // NewService wires the public service.
-func NewService(signer ports.TokenSigner, sessions ports.SessionStore) *Service {
-	return &Service{signer: signer, sessions: sessions}
+func NewService(signer ports.TokenSigner, sessions ports.SessionStore, directory ports.UserDirectory) *Service {
+	return &Service{signer: signer, sessions: sessions, directory: directory}
 }
 
 // PrincipalFromToken verifies an access token.
@@ -40,4 +41,17 @@ func (s *Service) RevokeUserSessions(ctx context.Context, userID string) error {
 			"We could not sign that user out. Please try again.")
 	}
 	return nil
+}
+
+// PhoneFor is the reverse lookup: the number behind an account id.
+func (s *Service) PhoneFor(ctx context.Context, userID string) (string, bool, error) {
+	phone, found, err := s.directory.PhoneFor(ctx, userID)
+	if err != nil {
+		return "", false, errs.Wrap(err, errs.KindUnavailable, "directory_unavailable",
+			"We could not look that account up. Please try again.")
+	}
+	if !found {
+		return "", false, nil
+	}
+	return phone.String(), true, nil
 }

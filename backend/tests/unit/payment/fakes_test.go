@@ -35,6 +35,13 @@ type fakeRepo struct {
 	forPartnerErr       error
 	remitErr            error
 
+	// latestForOrderErrAfter, when nonzero, delays latestForOrderErr until
+	// the call count passes it — so a test can let one caller's read
+	// succeed and the next one fail, the way two calls a millisecond apart
+	// can find a healthy database and then a dropped connection.
+	latestForOrderErrAfter int
+	latestForOrderCalls    int
+
 	// pendingMissOnce makes the next PendingForOrder miss, which is how the
 	// loser of a checkout race sees the world: it checks, finds nothing, and
 	// writes — and the unique index catches it instead.
@@ -102,7 +109,8 @@ func (r *fakeRepo) PendingForOrder(_ context.Context, orderID string) (domain.Pa
 }
 
 func (r *fakeRepo) LatestForOrder(_ context.Context, orderID string) (domain.Payment, bool, error) {
-	if r.latestForOrderErr != nil {
+	r.latestForOrderCalls++
+	if r.latestForOrderErr != nil && (r.latestForOrderErrAfter == 0 || r.latestForOrderCalls > r.latestForOrderErrAfter) {
 		return domain.Payment{}, false, r.latestForOrderErr
 	}
 	var latest domain.Payment

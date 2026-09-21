@@ -67,6 +67,17 @@ tags:
       is carrying. This is payment's whole public surface — everything else the
       module does happens through the order module's own transitions, never a
       route a person calls.
+  - name: tracking
+    description: |
+      A live view of one delivery: the order's own status, and while a rider is
+      carrying it, where they are. Server-Sent Events — one frame on connect,
+      then one more each time something worth showing changes, until the order
+      reaches a status with nothing left to watch.
+  - name: notifications
+    description: |
+      Device registration for push, and the caller's own delivery history.
+      Sending a notification is not a route a person calls — it happens through
+      order's own transitions, the way a payment happens through a gateway.
 
       Isolated per ADR (05-architecture.md 2.6): built in Go today, ready to
       become a separate .NET service without any other module noticing, which
@@ -3736,6 +3747,106 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/track/{orderId}:
+    get:
+      tags: [tracking]
+      summary: Watch one delivery live
+      description: |
+        Server-Sent Events (`text/event-stream`). One frame on connect with
+        the order's current status and, while a rider is carrying it, their
+        last reported position; one more frame each time either changes;
+        the connection closes once the order reaches a status with nothing
+        left to watch. Open only to the order's own customer or the partner
+        currently assigned to it — anyone else gets 404, the same answer a
+        nonexistent order gets, so a stream cannot be used to probe whether
+        an order id exists.
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: false, schema: { type: string, enum: [bn, en] } }
+      responses:
+        "200":
+          description: "A stream of TrackingSnapshot frames, each as an SSE data line"
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/TrackingSnapshot" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such order, or it is not the caller's to watch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Tracking could not be reached, or the connection could not be upgraded to a stream
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/me/device:
+    post:
+      tags: [notifications]
+      summary: Register this device for push
+      description: |
+        Replaces whatever this account last registered on the same
+        platform — a reinstalled app gets a new token, not a second row
+        nothing will ever clean up.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, token]
+              properties:
+                platform: { type: string, enum: [ios, android] }
+                token:    { type: string }
+      responses:
+        "204":
+          description: Registered
+        "400":
+          description: An invalid platform, or no token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Notifications could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/me/notifications:
+    get:
+      tags: [notifications]
+      summary: The caller's own notification history
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: The caller's notifications, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Notifications could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
 
   securitySchemes:
@@ -3796,6 +3907,43 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Collection" }
           description: Held collections, oldest first — what a "please remit" screen lists.
+
+    TrackingSnapshot:
+      type: object
+      description: One frame of a live delivery stream.
+      required: [order_id, status, status_label, live]
+      properties:
+        order_id:     { type: string }
+        status:       { type: string }
+        status_label: { type: string }
+        live:
+          type: boolean
+          description: False on the last frame a stream will ever send for this order.
+        partner:
+          $ref: "#/components/schemas/TrackingPartner"
+
+    TrackingPartner:
+      type: object
+      description: Present only while a rider is carrying the order.
+      required: [id, name, phone, vehicle, lat, lng]
+      properties:
+        id:      { type: string }
+        name:    { type: string }
+        phone:   { type: string }
+        vehicle: { type: string }
+        lat:     { type: number, format: double }
+        lng:     { type: number, format: double }
+
+    Notification:
+      type: object
+      required: [id, title, body, channel, status, created_at]
+      properties:
+        id:      { type: string }
+        title:   { type: string }
+        body:    { type: string }
+        channel: { type: string, enum: [push, sms, none] }
+        status:  { type: string, enum: [sent, failed] }
+        created_at: { type: string, format: date-time }
 
     DeliveryPartner:
       type: object
