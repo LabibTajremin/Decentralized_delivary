@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-21T00:00:00Z
-current_phase: P15
-current_task: P15.T01
+current_phase: P16
+current_task: P16.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -75,7 +75,8 @@ P11 DONE       order — one transition table for four parties, idempotent place
 P12 DONE       dispatch — nationwide partners (D1), D4's distance choice in the query, ALG-04 rounds with a clock, ALG-08 feed, the sweep
 P13 DONE       payment — PaymentContract only (2.6), idempotent webhooks, atomic COD reconciliation
 P14 DONE       tracking & notification — SSE delivery stream, push tried on every device falling back to SMS
-P15..P20 TODO
+P15 DONE       admin & auto-tuning — ALG-09 radius tuning within bounds and pins, audit log endpoint, the actor-identity fix
+P16..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -406,6 +407,47 @@ P14.T08 DONE  docs/technical/tracking.md, docs/technical/notification.md
   alongside P14's own gaps, rather than trusting a stale log a second time.
   `backend/tests/unit/payment/repository_errors_test.go` is new; the handler
   gaps were closed by extending `handler_test.go`.
+
+## P15 tasks
+P15.T01 DONE  domain — ALG-09 as a pure function (`domain.Tune`): widens on thin merchant density or a high order-failure rate, narrows only when comfortably oversupplied and failures are fine, one 10% step (min one metre) clamped to the definition's own bounds
+P15.T02 DONE  application — `AutoTuneUseCase` (scoped to `discovery.base_radius` and `dispatch.partner_radius` only — the two keys Appendix B's ALG-09 has a signal for), `ListChangesUseCase` (audit log, filterable by key/scope/limit); both write through the existing `SetOverrideUseCase` so bounds, pins and the audit log are enforced once
+P15.T03 DONE  the actor-identity fix — `confighttp.NewHandler` gains a `PrincipalOf` parameter (mirroring every other module's transport handler) and both writes now read the actor from the authenticated caller instead of a client-supplied `actor_id` field, which is removed from the wire format entirely
+P15.T04 DONE  transport — `GET /v1/admin/config/changes`, `POST /v1/admin/config/autotune`; OpenAPI paths + `AutoTuneRequest`/`TuneOutcome` schemas, `actor_id` dropped from `SetConfigOverride`/`ClearConfigOverride`
+P15.T05 DONE  unit tests at 100% (domain `Tune`, `AutoTuneUseCase`, `ListChangesUseCase`, both new HTTP routes, the new 401-without-a-caller path); full `./scripts/verify.sh` green
+P15.T06 DONE  docs/technical/config.md updated with ALG-09 and the actor-identity fix; STATE.md
+
+## What P15's tests found
+
+- **The audit log's actor had been client-supplied since P04 was built, and
+  nobody had closed it out.** `setOverrideRequest`/`clearOverrideRequest`
+  carried an `actor_id` string that the handler trusted directly, with a
+  comment on the code already admitting it was a stand-in "until P04 supplies
+  an authenticated identity." P04 shipped two phases ago; every other
+  module's transport handler (payment, order, tracking, notification, cart,
+  catalogue) had already been wired to read the caller from
+  `identityhttp.PrincipalFrom`, but config's own wiring in `cmd/api/main.go`
+  never was. Anyone with admin access could attribute a change to any other
+  admin's id in a log whose entire purpose is answering "who did this and
+  why" — found by reading the existing code's own stale comment, not by a
+  failing test. Fixed by giving `confighttp.NewHandler` a `PrincipalOf`
+  parameter identical in shape to what every other module already uses, and
+  removing `actor_id` from the wire format so a forged actor is no longer
+  representable at all, not merely discouraged.
+- **Two unreachable defensive branches, found by coverage rather than by
+  reasoning about the code first.** `AutoTuneUseCase.Execute`/`tuneOne`
+  originally checked errors from `domain.Lookup`, `resolved.Value` and
+  `resolved.Int` — all three provably impossible given that `TunableKeys` is
+  a fixed list of always-registered keys and `domain.Resolve` guarantees
+  every registered key is present in its `Resolved` snapshot
+  (`TestResolveAlwaysProducesEveryKey` already established this). Coverage
+  analysis (93.8% and 86.7% respectively) is what surfaced them; the fix was
+  to delete the branches rather than contrive a test to reach them, with a
+  comment at each deletion site explaining why the call is infallible for
+  every input the method is actually invoked with.
+- **`golangci-lint`'s `revive` rule catches shadowing a Go builtin.**
+  `clamp(v, min, max int64)` shadowed the built-in `min` function within its
+  own body — harmless here since the body never called the builtin, but the
+  gate still failed it. Renamed the parameters to `lo`/`hi`.
 
 ## P17 pre-brief (for whoever picks up the Flutter work)
 

@@ -113,8 +113,7 @@ func TestAnAreaOverrideTakesEffectEndToEnd(t *testing.T) {
 		"key": "pricing.delivery_base",
 		"level": "area", "code": "DHK-DHM",
 		"value": "6000",
-		"reason": "Dhanmondi traffic has got worse",
-		"actor_id": "adm_e2e"
+		"reason": "Dhanmondi traffic has got worse"
 	}`, &change)
 	if status != http.StatusOK {
 		t.Fatalf("set override status = %d", status)
@@ -137,8 +136,7 @@ func TestAnAreaOverrideTakesEffectEndToEnd(t *testing.T) {
 	if status := deleteJSON(t, base+"/v1/config/override", `{
 		"key": "pricing.delivery_base",
 		"level": "area", "code": "DHK-DHM",
-		"reason": "trial over",
-		"actor_id": "adm_e2e"
+		"reason": "trial over"
 	}`, nil); status != http.StatusOK {
 		t.Fatalf("clear override status = %d", status)
 	}
@@ -165,7 +163,7 @@ func TestResolutionOrderOverHTTP(t *testing.T) {
 	} {
 		body := `{"key":"discovery.base_radius","level":"` + step.level +
 			`","code":"` + step.code + `","value":"` + step.value +
-			`","reason":"resolution test","actor_id":"adm_e2e"}`
+			`","reason":"resolution test"}`
 		if status := putJSON(t, base+"/v1/config/overrides", body, nil); status != http.StatusOK {
 			t.Fatalf("set %s override: status %d", step.level, status)
 		}
@@ -191,8 +189,7 @@ func TestTheDivisionCeilingCannotBeTurnedOffOverHTTP(t *testing.T) {
 		"key": "discovery.division_ceiling",
 		"level": "area", "code": "DHK-DHM",
 		"value": "false",
-		"reason": "we want cross-division delivery",
-		"actor_id": "adm_e2e"
+		"reason": "we want cross-division delivery"
 	}`, &body)
 
 	if status != http.StatusForbidden {
@@ -222,8 +219,7 @@ func TestOutOfBoundsIsRejectedOverHTTP(t *testing.T) {
 		"key": "pricing.delivery_base",
 		"level": "global", "code": "",
 		"value": "1000000",
-		"reason": "surge",
-		"actor_id": "adm_e2e"
+		"reason": "surge"
 	}`, &body)
 
 	if status != http.StatusBadRequest {
@@ -293,7 +289,7 @@ func TestTheConfigSurfaceIsAdminOnly(t *testing.T) {
 		}
 	}
 
-	body := `{"key":"pricing.delivery_base","level":"global","code":"","value":"6000","reason":"r","actor_id":"a"}`
+	body := `{"key":"pricing.delivery_base","level":"global","code":"","value":"6000","reason":"r"}`
 	if status := putJSONAs(t, base+"/v1/config/overrides", body, "", nil); status != http.StatusUnauthorized {
 		t.Errorf("setting an override with no token: status = %d, want 401", status)
 	}

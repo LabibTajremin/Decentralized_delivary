@@ -129,6 +129,8 @@ because a hole in the record is how a missing change goes unnoticed.
 | `GET /v1/config/effective` | Resolved values for a placement, each with its source scope |
 | `PUT /v1/config/overrides` | Set a variable at one scope |
 | `DELETE /v1/config/override` | Reset a variable to the next scope up |
+| `GET /v1/admin/config/changes` | The audit log, filterable by key, scope and a result limit |
+| `POST /v1/admin/config/autotune` | Run ALG-09 for one area |
 
 These are admin endpoints. Authentication and role checks arrive in P04 and wrap
 them without any change here, which is the point of keeping transport thin. The
@@ -138,3 +140,75 @@ actor comes from and nothing else.
 `/v1/config/effective` reports the *source* of every value. An admin looking at
 a fee needs to know whether it comes from the area, the district or the global
 default before they can sensibly change it.
+
+## P15: the actor comes from the caller, not the request body
+
+`setOverrideRequest`/`clearOverrideRequest` used to carry an `actor_id` field
+that the handler trusted directly — a leftover from before P04 wired identity
+through, and never closed out once it was. Any authenticated admin could
+attribute a change to any other admin's id in the audit log, which defeats the
+log's whole purpose: it exists so "why did this change" has an answer, and an
+answer that can be forged is not one.
+
+P15 removes the field. `confighttp.NewHandler` now takes a `PrincipalOf`
+function — the same shape every other module's transport handler already uses
+— and every write reads the actor from the authenticated request instead:
+
+```go
+adminID, ok := h.caller(w, r)
+if !ok {
+    return // 401, unauthenticated
+}
+...
+Actor: domain.AdminActor(adminID),
+```
+
+`NewHandler` panics on a nil `principal`, the same way it already panicked on
+a nil guard: a config write with no real actor behind it is exactly the hole
+the audit log is supposed to make impossible.
+
+## ALG-09: auto-tuning radius
+
+Appendix B: "Auto-tuning radius... merchant density and order-failure rate."
+`domain.Tune` is that rule as one pure function — given a definition, the
+current value, an area's merchant-density threshold and a signal, it decides
+the next value, a human-readable reason, and whether anything changed at all.
+
+**Scope.** ALG-09 tunes exactly two keys: `discovery.base_radius` and
+`dispatch.partner_radius` — the two whose whole purpose is "how far to reach
+for supply." Every other auto-tunable key (pricing, `order.cod_limit`) has no
+signal Appendix B defines for it, so ALG-09 leaves those to the admin rather
+than inventing a feedback loop the spec never asked for.
+
+**The rule.** Widen when supply is thin (fewer merchants nearby than the
+area's own `discovery.min_merchants`) or when deliveries are failing more
+than ALG-09's own accepted rate — either reading says the served area is too
+small. Narrow only when density is comfortably above that threshold (twice
+it, not merely at it) *and* delivery success is fine, so a stable area does
+not keep shrinking pass after pass toward its floor. Everything else is left
+alone. A move is always one step — 10% of the current value, or one metre on
+a radius too small for 10% to round to anything — clamped to the
+definition's own bounds; a value already at a bound reports no change rather
+than an error.
+
+**Where it writes.** `AutoTuneUseCase.Execute` resolves the area, then for
+each tunable key calls the *same* `SetOverrideUseCase.Execute` an admin's own
+PUT goes through — bounds, the pin check, and the audit entry are enforced
+once there, not duplicated in the tuner. A pinned variable comes back as
+`ErrPinned`, which the use case turns into `TuneOutcome{Applied: false,
+Skipped: "pinned"}` rather than failing the whole pass — an admin pinning one
+key in one area must not stop the tuner from touching the other key, or the
+other areas.
+
+**The actor.** Every auto-tuned change is attributed to `domain.TunerActor()`,
+not an admin — the audit log distinguishes "an admin decided this" from "the
+algorithm decided this," which is the whole reason `domain.Actor` carries a
+`Kind` at all.
+
+**Trigger.** `POST /v1/admin/config/autotune` takes the signal directly in the
+request body (`merchants_nearby`, `order_failure_rate`) rather than computing
+it server-side: this phase has no scheduled job or telemetry pipeline to
+supply that signal automatically, so an operator or a future cron calls the
+endpoint with numbers it already has. What ALG-09 does with the signal is
+what Appendix B specifies; how the signal is gathered is deliberately left
+open for a later phase.

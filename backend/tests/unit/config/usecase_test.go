@@ -19,9 +19,10 @@ type fakeRepo struct {
 	overrides []domain.Override
 	changes   []domain.Change
 
-	loadErr  error
-	writeErr error
-	scopeErr error
+	loadErr    error
+	writeErr   error
+	scopeErr   error
+	changesErr error
 }
 
 func (f *fakeRepo) OverridesFor(context.Context, domain.Placement) ([]domain.Override, error) {
@@ -76,8 +77,24 @@ func (f *fakeRepo) DeleteOverride(_ context.Context, key domain.Key, scope domai
 	return nil
 }
 
-func (f *fakeRepo) Changes(context.Context, ports.ChangeFilter) ([]domain.Change, error) {
-	return f.changes, nil
+func (f *fakeRepo) Changes(_ context.Context, filter ports.ChangeFilter) ([]domain.Change, error) {
+	if f.changesErr != nil {
+		return nil, f.changesErr
+	}
+	out := make([]domain.Change, 0, len(f.changes))
+	for _, c := range f.changes {
+		if filter.Key != "" && c.Key != filter.Key {
+			continue
+		}
+		if filter.Scope != nil && c.Scope != *filter.Scope {
+			continue
+		}
+		out = append(out, c)
+	}
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
 }
 
 // fixedClock and fixedIDs make audit entries assertable.

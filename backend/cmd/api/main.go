@@ -189,7 +189,8 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	// nothing needed to reach identity this way; notification's SMS fallback
 	// (PhoneFor) is the first real caller.
 	identityService := identityapp.NewService(signer, sessionStore, directory)
-	configService := cfgapp.NewService(cfgapp.NewResolveUseCase(cfgRepo))
+	cfgResolve := cfgapp.NewResolveUseCase(cfgRepo)
+	configService := cfgapp.NewService(cfgResolve)
 
 	identityhttp.NewHandler(
 		identityapp.NewRequestOTPUseCase(otpStore, limiter, smsSender, configService, systemClock, nil, logger),
@@ -200,14 +201,21 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		authenticator,
 	).Register(mux)
 
-	// Config (P03), behind the admin role. Mounted after identity because it
-	// needs the authenticator; the guard is passed in so config never depends
-	// on identity's transport package.
+	// Config (P03/P15), behind the admin role. Mounted after identity because
+	// it needs the authenticator; the guard is passed in so config never
+	// depends on identity's transport package.
+	cfgSet := cfgapp.NewSetOverrideUseCase(cfgRepo, systemClock, ids)
 	cfghttp.NewHandler(
-		cfgapp.NewResolveUseCase(cfgRepo),
-		cfgapp.NewSetOverrideUseCase(cfgRepo, systemClock, ids),
+		cfgResolve,
+		cfgSet,
 		cfgapp.NewClearOverrideUseCase(cfgRepo, systemClock, ids),
+		cfgapp.NewListChangesUseCase(cfgRepo),
+		cfgapp.NewAutoTuneUseCase(cfgResolve, cfgSet),
 		cfghttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
 	).Register(mux)
 
 	// User profile and addresses (P05). Every route acts on the caller's own

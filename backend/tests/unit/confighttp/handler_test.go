@@ -67,8 +67,24 @@ func (m *memoryRepo) DeleteOverride(_ context.Context, key domain.Key, scope dom
 	return nil
 }
 
-func (m *memoryRepo) Changes(context.Context, ports.ChangeFilter) ([]domain.Change, error) {
-	return m.changes, nil
+func (m *memoryRepo) Changes(_ context.Context, filter ports.ChangeFilter) ([]domain.Change, error) {
+	if m.loadErr != nil {
+		return nil, m.loadErr
+	}
+	var out []domain.Change
+	for _, c := range m.changes {
+		if filter.Key != "" && c.Key != filter.Key {
+			continue
+		}
+		if filter.Scope != nil && c.Scope != *filter.Scope {
+			continue
+		}
+		out = append(out, c)
+	}
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
 }
 
 type fixedClock struct{}
@@ -88,13 +104,24 @@ func newMux(repo *memoryRepo) *http.ServeMux {
 	return newMuxWithGuard(repo, openGuard)
 }
 
+// adminPrincipal stands in for the authenticated caller — "adm_1" is who
+// every override in these tests is attributed to, the way the audit log
+// actually records it once identity supplies a caller instead of a client
+// field.
+func adminPrincipal(*http.Request) (string, bool) { return "adm_1", true }
+
 func newMuxWithGuard(repo *memoryRepo, guard confighttp.Guard) *http.ServeMux {
+	resolve := application.NewResolveUseCase(repo)
+	set := application.NewSetOverrideUseCase(repo, fixedClock{}, fixedIDs{})
 	mux := http.NewServeMux()
 	confighttp.NewHandler(
-		application.NewResolveUseCase(repo),
-		application.NewSetOverrideUseCase(repo, fixedClock{}, fixedIDs{}),
+		resolve,
+		set,
 		application.NewClearOverrideUseCase(repo, fixedClock{}, fixedIDs{}),
+		application.NewListChangesUseCase(repo),
+		application.NewAutoTuneUseCase(resolve, set),
 		guard,
+		adminPrincipal,
 	).Register(mux)
 	return mux
 }
@@ -133,7 +160,17 @@ func TestANilGuardIsRefusedAtWiringTime(t *testing.T) {
 			t.Error("a handler was built with no guard")
 		}
 	}()
-	confighttp.NewHandler(nil, nil, nil, nil)
+	confighttp.NewHandler(nil, nil, nil, nil, nil, nil, nil)
+}
+
+// A nil principal reader is refused the same way, for the same reason.
+func TestANilPrincipalReaderIsRefusedAtWiringTime(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("a handler was built with no principal reader")
+		}
+	}()
+	confighttp.NewHandler(nil, nil, nil, nil, nil, openGuard, nil)
 }
 
 func do(mux *http.ServeMux, method, target, body string) *httptest.ResponseRecorder {
@@ -287,8 +324,7 @@ func TestSettingAnOverrideRecordsAChange(t *testing.T) {
 		"level": "area",
 		"code": "DHK-DHM",
 		"value": "6000",
-		"reason": "traffic",
-		"actor_id": "adm_1"
+		"reason": "traffic"
 	}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
@@ -324,7 +360,7 @@ func TestMoneyIsSentAsTextNotAFloat(t *testing.T) {
 	repo := &memoryRepo{}
 	rec := do(newMux(repo), http.MethodPut, "/v1/config/overrides", `{
 		"key": "pricing.delivery_base", "level": "global", "code": "",
-		"value": "6000", "reason": "r", "actor_id": "adm_1"
+		"value": "6000", "reason": "r"
 	}`)
 	var raw map[string]json.RawMessage
 	decode(t, rec, &raw)
@@ -340,8 +376,7 @@ func TestTheAPIRefusesToDisableTheDivisionCeiling(t *testing.T) {
 		"key": "discovery.division_ceiling",
 		"level": "area", "code": "DHK-DHM",
 		"value": "false",
-		"reason": "we want cross-division delivery",
-		"actor_id": "adm_1"
+		"reason": "we want cross-division delivery"
 	}`)
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want 403", rec.Code)
@@ -357,7 +392,7 @@ func TestTheAPIRefusesToDisableTheDivisionCeiling(t *testing.T) {
 func TestSettingOutOfBoundsIsRejected(t *testing.T) {
 	rec := do(newMux(&memoryRepo{}), http.MethodPut, "/v1/config/overrides", `{
 		"key": "pricing.delivery_base", "level": "global", "code": "",
-		"value": "1000000", "reason": "surge", "actor_id": "adm_1"
+		"value": "1000000", "reason": "surge"
 	}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
@@ -370,7 +405,7 @@ func TestSettingOutOfBoundsIsRejected(t *testing.T) {
 func TestSettingAValueOfTheWrongShapeIsRejected(t *testing.T) {
 	rec := do(newMux(&memoryRepo{}), http.MethodPut, "/v1/config/overrides", `{
 		"key": "pricing.delivery_base", "level": "global", "code": "",
-		"value": "quite a lot", "reason": "r", "actor_id": "adm_1"
+		"value": "quite a lot", "reason": "r"
 	}`)
 	if got := errorCode(t, rec); got != "invalid_config_value" {
 		t.Errorf("code = %q, want invalid_config_value", got)
@@ -380,7 +415,7 @@ func TestSettingAValueOfTheWrongShapeIsRejected(t *testing.T) {
 func TestSettingAnUnknownKeyIsRejected(t *testing.T) {
 	rec := do(newMux(&memoryRepo{}), http.MethodPut, "/v1/config/overrides", `{
 		"key": "pricing.delivery_bass", "level": "global", "code": "",
-		"value": "6000", "reason": "r", "actor_id": "adm_1"
+		"value": "6000", "reason": "r"
 	}`)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
@@ -392,9 +427,9 @@ func TestSettingAnUnknownKeyIsRejected(t *testing.T) {
 
 func TestAnInvalidScopeIsRejected(t *testing.T) {
 	cases := []struct{ body, wantCode string }{
-		{`{"key":"pricing.delivery_base","level":"planet","code":"x","value":"6000","reason":"r","actor_id":"a"}`, "invalid_scope_level"},
-		{`{"key":"pricing.delivery_base","level":"area","code":"","value":"6000","reason":"r","actor_id":"a"}`, "invalid_scope"},
-		{`{"key":"pricing.delivery_base","level":"global","code":"DHA","value":"6000","reason":"r","actor_id":"a"}`, "invalid_scope"},
+		{`{"key":"pricing.delivery_base","level":"planet","code":"x","value":"6000","reason":"r"}`, "invalid_scope_level"},
+		{`{"key":"pricing.delivery_base","level":"area","code":"","value":"6000","reason":"r"}`, "invalid_scope"},
+		{`{"key":"pricing.delivery_base","level":"global","code":"DHA","value":"6000","reason":"r"}`, "invalid_scope"},
 	}
 	for _, c := range cases {
 		rec := do(newMux(&memoryRepo{}), http.MethodPut, "/v1/config/overrides", c.body)
@@ -407,7 +442,7 @@ func TestAnInvalidScopeIsRejected(t *testing.T) {
 func TestAChangeWithoutAReasonIsRejectedOverHTTP(t *testing.T) {
 	rec := do(newMux(&memoryRepo{}), http.MethodPut, "/v1/config/overrides", `{
 		"key": "pricing.delivery_base", "level": "global", "code": "",
-		"value": "6000", "reason": "", "actor_id": "adm_1"
+		"value": "6000", "reason": ""
 	}`)
 	if got := errorCode(t, rec); got != "reason_required" {
 		t.Errorf("code = %q", got)
@@ -432,7 +467,7 @@ func TestClearingAnOverrideOverHTTP(t *testing.T) {
 
 	rec := do(newMux(repo), http.MethodDelete, "/v1/config/override", `{
 		"key": "pricing.delivery_base", "level": "area", "code": "DHK-DHM",
-		"reason": "trial over", "actor_id": "adm_1"
+		"reason": "trial over"
 	}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
@@ -454,7 +489,7 @@ func TestClearingAnOverrideOverHTTP(t *testing.T) {
 func TestClearingTheGlobalValueIsRejected(t *testing.T) {
 	rec := do(newMux(&memoryRepo{}), http.MethodDelete, "/v1/config/override", `{
 		"key": "pricing.delivery_base", "level": "global", "code": "",
-		"reason": "tidying", "actor_id": "adm_1"
+		"reason": "tidying"
 	}`)
 	if got := errorCode(t, rec); got != "cannot_clear_global" {
 		t.Errorf("code = %q", got)
@@ -463,11 +498,201 @@ func TestClearingTheGlobalValueIsRejected(t *testing.T) {
 
 func TestClearingRejectsAnInvalidScopeAndBody(t *testing.T) {
 	rec := do(newMux(&memoryRepo{}), http.MethodDelete, "/v1/config/override",
-		`{"key":"pricing.delivery_base","level":"planet","code":"x","reason":"r","actor_id":"a"}`)
+		`{"key":"pricing.delivery_base","level":"planet","code":"x","reason":"r"}`)
 	if got := errorCode(t, rec); got != "invalid_scope_level" {
 		t.Errorf("code = %q", got)
 	}
 	rec = do(newMux(&memoryRepo{}), http.MethodDelete, "/v1/config/override", `{"key":`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// A write without an authenticated caller is refused before it can touch
+// the audit log — a client-supplied identity would let anyone else's change
+// be recorded as an admin's.
+func TestWritesRequireAnAuthenticatedCaller(t *testing.T) {
+	resolve := application.NewResolveUseCase(&memoryRepo{})
+	set := application.NewSetOverrideUseCase(&memoryRepo{}, fixedClock{}, fixedIDs{})
+	repo := &memoryRepo{}
+	mux := http.NewServeMux()
+	confighttp.NewHandler(
+		resolve, set,
+		application.NewClearOverrideUseCase(repo, fixedClock{}, fixedIDs{}),
+		application.NewListChangesUseCase(repo),
+		application.NewAutoTuneUseCase(resolve, set),
+		openGuard,
+		func(*http.Request) (string, bool) { return "", false },
+	).Register(mux)
+
+	rec := do(mux, http.MethodPut, "/v1/config/overrides", `{
+		"key": "pricing.delivery_base", "level": "global", "code": "",
+		"value": "6000", "reason": "r"
+	}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("PUT override status = %d, want 401", rec.Code)
+	}
+	if got := errorCode(t, rec); got != "unauthenticated" {
+		t.Errorf("code = %q", got)
+	}
+
+	rec = do(mux, http.MethodDelete, "/v1/config/override", `{
+		"key": "pricing.delivery_base", "level": "area", "code": "DHK-DHM",
+		"reason": "r"
+	}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("DELETE override status = %d, want 401", rec.Code)
+	}
+}
+
+// TestListChangesReturnsTheAuditLogOverHTTP: an admin reviewing what changed
+// needs the whole entry, not just that something moved.
+func TestListChangesReturnsTheAuditLogOverHTTP(t *testing.T) {
+	repo := &memoryRepo{}
+	mux := newMux(repo)
+	do(mux, http.MethodPut, "/v1/config/overrides", `{
+		"key": "pricing.delivery_base", "level": "global", "code": "",
+		"value": "6000", "reason": "traffic"
+	}`)
+
+	rec := do(mux, http.MethodGet, "/v1/admin/config/changes", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Changes []struct {
+			Key    string `json:"key"`
+			Reason string `json:"reason"`
+		} `json:"changes"`
+	}
+	decode(t, rec, &body)
+	if len(body.Changes) != 1 || body.Changes[0].Key != "pricing.delivery_base" || body.Changes[0].Reason != "traffic" {
+		t.Errorf("changes = %+v", body.Changes)
+	}
+}
+
+// TestListChangesFiltersByKeyLevelCodeAndLimit exercises every query
+// parameter the endpoint accepts, since an admin narrows this list by all of
+// them in practice.
+func TestListChangesFiltersByKeyLevelCodeAndLimit(t *testing.T) {
+	repo := &memoryRepo{}
+	mux := newMux(repo)
+	do(mux, http.MethodPut, "/v1/config/overrides", `{
+		"key": "pricing.delivery_base", "level": "area", "code": "DHK-DHM",
+		"value": "6000", "reason": "r1"
+	}`)
+	do(mux, http.MethodPut, "/v1/config/overrides", `{
+		"key": "dispatch.partner_radius", "level": "global", "code": "",
+		"value": "6000", "reason": "r2"
+	}`)
+
+	rec := do(mux, http.MethodGet, "/v1/admin/config/changes?key=pricing.delivery_base&level=area&code=DHK-DHM&limit=1", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Changes []struct {
+			Key string `json:"key"`
+		} `json:"changes"`
+	}
+	decode(t, rec, &body)
+	if len(body.Changes) != 1 || body.Changes[0].Key != "pricing.delivery_base" {
+		t.Errorf("changes = %+v", body.Changes)
+	}
+}
+
+func TestListChangesRejectsAnInvalidScope(t *testing.T) {
+	rec := do(newMux(&memoryRepo{}), http.MethodGet, "/v1/admin/config/changes?level=planet&code=x", "")
+	if got := errorCode(t, rec); got != "invalid_scope_level" {
+		t.Errorf("code = %q", got)
+	}
+}
+
+func TestListChangesSurfacesAStorageFailureOverHTTP(t *testing.T) {
+	repo := &memoryRepo{loadErr: context.DeadlineExceeded}
+	rec := do(newMux(repo), http.MethodGet, "/v1/admin/config/changes", "")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
+	}
+}
+
+// TestAutotuneOverHTTP walks ALG-09 through the transport layer: a thin area
+// widens, a pinned key is reported skipped, and the audit entry is echoed
+// back on every applied outcome.
+func TestAutotuneOverHTTP(t *testing.T) {
+	scope, _ := domain.NewScope(domain.LevelArea, "DHK-DHM")
+	pinnedValue, _ := domain.Distance(5000)
+	repo := &memoryRepo{overrides: []domain.Override{
+		{Key: domain.DiscoveryBaseRadius, Scope: scope, Value: pinnedValue, Pinned: true},
+	}}
+	rec := do(newMux(repo), http.MethodPost, "/v1/admin/config/autotune", `{
+		"area": "DHK-DHM", "district": "DHK", "division": "DHA",
+		"merchants_nearby": 1, "order_failure_rate": 0
+	}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Results []struct {
+			Key     string `json:"key"`
+			Applied bool   `json:"applied"`
+			Skipped string `json:"skipped"`
+			Change  *struct {
+				NewValue string `json:"new_value"`
+			} `json:"change"`
+		} `json:"results"`
+	}
+	decode(t, rec, &body)
+	if len(body.Results) != 2 {
+		t.Fatalf("results = %+v", body.Results)
+	}
+	for _, r := range body.Results {
+		switch r.Key {
+		case "discovery.base_radius":
+			if r.Applied || r.Skipped != "pinned" {
+				t.Errorf("base radius = %+v, want pinned", r)
+			}
+		case "dispatch.partner_radius":
+			if !r.Applied || r.Change == nil {
+				t.Errorf("partner radius = %+v, want applied with a change", r)
+			}
+		}
+	}
+}
+
+func TestAutotuneReportsNoChangeNeededOverHTTP(t *testing.T) {
+	rec := do(newMux(&memoryRepo{}), http.MethodPost, "/v1/admin/config/autotune", `{
+		"area": "DHK-DHM", "merchants_nearby": 5, "order_failure_rate": 0.02
+	}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Results []struct {
+			Applied bool   `json:"applied"`
+			Skipped string `json:"skipped"`
+		} `json:"results"`
+	}
+	decode(t, rec, &body)
+	for _, r := range body.Results {
+		if r.Applied || r.Skipped != "no_change_needed" {
+			t.Errorf("result = %+v, want no_change_needed", r)
+		}
+	}
+}
+
+func TestAutotuneRejectsAnInvalidAreaOverHTTP(t *testing.T) {
+	rec := do(newMux(&memoryRepo{}), http.MethodPost, "/v1/admin/config/autotune", `{
+		"area": "", "merchants_nearby": 1
+	}`)
+	if got := errorCode(t, rec); got != "invalid_scope" {
+		t.Errorf("code = %q", got)
+	}
+}
+
+func TestAutotuneRejectsAMalformedBody(t *testing.T) {
+	rec := do(newMux(&memoryRepo{}), http.MethodPost, "/v1/admin/config/autotune", `{"area":`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}

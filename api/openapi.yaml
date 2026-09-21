@@ -350,6 +350,82 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/admin/config/changes:
+    get:
+      tags: [config]
+      summary: The configuration audit log
+      description: |
+        Every change ever applied, by an admin or by ALG-09, newest first.
+        Narrows by variable, scope and a result limit — an admin reviewing
+        what moved a fee band needs to filter down to it, not scroll the
+        whole history.
+      parameters:
+        - { name: key,   in: query, schema: { type: string }, example: pricing.delivery_base }
+        - { name: level, in: query, schema: { $ref: "#/components/schemas/ConfigScopeLevel" } }
+        - { name: code,  in: query, schema: { type: string }, example: DHK-DHM }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Matching audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changes]
+                properties:
+                  changes:
+                    type: array
+                    items: { $ref: "#/components/schemas/ConfigChange" }
+        "400":
+          description: The scope is invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The settings store is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/config/autotune:
+    post:
+      tags: [config]
+      summary: Run ALG-09 for one area
+      description: |
+        Widens or narrows discovery.base_radius and dispatch.partner_radius
+        for the given area, from a merchant-density and order-failure-rate
+        signal (Appendix B, ALG-09). Every write goes through the same path
+        an admin's own change takes, so bounds, pins and the audit log are
+        enforced once. A pinned variable is reported skipped, not applied —
+        the pass never fails because of one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutoTuneRequest" }
+      responses:
+        "200":
+          description: What the pass did with each tunable variable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/TuneOutcome" }
+        "400":
+          description: The area is invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The settings store is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /v1/auth/otp/request:
     post:
       tags: [auth]
@@ -5167,18 +5243,16 @@ components:
         pinned:
           type: boolean
           description: Stop the auto-tuner changing this variable in this scope.
-        reason:   { type: string, example: "Dhanmondi traffic has got worse" }
-        actor_id: { type: string, description: The admin making the change. }
+        reason: { type: string, example: "Dhanmondi traffic has got worse" }
 
     ClearConfigOverride:
       type: object
       required: [key, level, reason]
       properties:
-        key:      { type: string }
-        level:    { $ref: "#/components/schemas/ConfigScopeLevel" }
-        code:     { type: string }
-        reason:   { type: string }
-        actor_id: { type: string }
+        key:    { type: string }
+        level:  { $ref: "#/components/schemas/ConfigScopeLevel" }
+        code:   { type: string }
+        reason: { type: string }
 
     ConfigChange:
       type: object
@@ -5193,6 +5267,35 @@ components:
         actor:     { type: string, example: "admin:adm_1" }
         reason:    { type: string }
         changed_at: { type: string, format: date-time }
+
+    AutoTuneRequest:
+      type: object
+      description: One ALG-09 pass over an area's radii, driven by an operator-supplied or scheduled-job signal.
+      required: [area, merchants_nearby, order_failure_rate]
+      properties:
+        area:     { type: string, example: DHK-DHM }
+        district: { type: string, example: DHK }
+        division: { type: string, example: DHA }
+        merchants_nearby:
+          type: integer
+          description: Merchants discoverable near this area right now.
+        order_failure_rate:
+          type: number
+          format: double
+          description: Fraction of recent orders in this area that failed to deliver.
+
+    TuneOutcome:
+      type: object
+      description: What ALG-09 did, or did not do, with one variable.
+      required: [key, applied]
+      properties:
+        key:     { type: string, example: discovery.base_radius }
+        applied: { type: boolean }
+        skipped:
+          type: string
+          enum: [no_change_needed, pinned]
+          description: Present only when applied is false.
+        change: { $ref: "#/components/schemas/ConfigChange" }
 
     Area:
       type: object

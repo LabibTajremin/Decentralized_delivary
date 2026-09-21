@@ -9,9 +9,11 @@ package http
 import (
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/config/application"
+	"github.com/rootlogic-lab/delivery/backend/internal/modules/config/application/ports"
 	"github.com/rootlogic-lab/delivery/backend/internal/modules/config/domain"
 	"github.com/rootlogic-lab/delivery/backend/internal/platform/httpx"
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
@@ -24,39 +26,53 @@ import (
 // smallest seam that keeps the dependency pointing the right way.
 type Guard func(http.Handler) http.Handler
 
+// PrincipalOf reports the authenticated caller's user id.
+type PrincipalOf func(*http.Request) (userID string, ok bool)
+
 // Handler serves the config endpoints.
 type Handler struct {
 	resolve   *application.ResolveUseCase
 	set       *application.SetOverrideUseCase
 	reset     *application.ClearOverrideUseCase
+	changes   *application.ListChangesUseCase
+	tune      *application.AutoTuneUseCase
 	adminOnly Guard
+	principal PrincipalOf
 }
 
 // NewHandler builds the handler.
 //
-// adminOnly must not be nil. A nil guard would silently publish the whole
-// configuration surface, so it is refused at wiring time rather than becoming a
-// hole nobody notices.
+// adminOnly and principal must not be nil. A nil guard would silently
+// publish the whole configuration surface, so both are refused at wiring
+// time rather than becoming a hole nobody notices.
 func NewHandler(
 	resolve *application.ResolveUseCase,
 	set *application.SetOverrideUseCase,
 	reset *application.ClearOverrideUseCase,
+	changes *application.ListChangesUseCase,
+	tune *application.AutoTuneUseCase,
 	adminOnly Guard,
+	principal PrincipalOf,
 ) *Handler {
-	if adminOnly == nil {
-		panic("config transport: an admin guard is required")
+	if adminOnly == nil || principal == nil {
+		panic("config transport: an admin guard and a principal reader are required")
 	}
-	return &Handler{resolve: resolve, set: set, reset: reset, adminOnly: adminOnly}
+	return &Handler{
+		resolve: resolve, set: set, reset: reset, changes: changes, tune: tune,
+		adminOnly: adminOnly, principal: principal,
+	}
 }
 
 // routes maps mux patterns to handlers. Register mounts them and Patterns
 // reports them, so the router and the OpenAPI check read one list.
 func (h *Handler) routes() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
-		"GET /v1/config/definitions": h.definitions,
-		"GET /v1/config/effective":   h.effective,
-		"PUT /v1/config/overrides":   h.setOverride,
-		"DELETE /v1/config/override": h.clearOverride,
+		"GET /v1/config/definitions":     h.definitions,
+		"GET /v1/config/effective":       h.effective,
+		"PUT /v1/config/overrides":       h.setOverride,
+		"DELETE /v1/config/override":     h.clearOverride,
+		"GET /v1/admin/config/changes":   h.listChanges,
+		"POST /v1/admin/config/autotune": h.autotune,
 	}
 }
 
@@ -161,13 +177,12 @@ func (h *Handler) effective(w http.ResponseWriter, r *http.Request) {
 // means the server parses each kind exactly once, the same way the database
 // stores it.
 type setOverrideRequest struct {
-	Key     string `json:"key"`
-	Level   string `json:"level"`
-	Code    string `json:"code"`
-	Value   string `json:"value"`
-	Pinned  bool   `json:"pinned"`
-	Reason  string `json:"reason"`
-	ActorID string `json:"actor_id"`
+	Key    string `json:"key"`
+	Level  string `json:"level"`
+	Code   string `json:"code"`
+	Value  string `json:"value"`
+	Pinned bool   `json:"pinned"`
+	Reason string `json:"reason"`
 }
 
 type changeResponse struct {
@@ -200,6 +215,10 @@ func toChangeResponse(c domain.Change) changeResponse {
 
 // PUT /v1/config/overrides
 func (h *Handler) setOverride(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
 	var req setOverrideRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.WriteError(w, err)
@@ -231,11 +250,7 @@ func (h *Handler) setOverride(w http.ResponseWriter, r *http.Request) {
 		Scope:  scope,
 		Value:  value,
 		Pinned: req.Pinned,
-		// Until P04 supplies an authenticated identity, the actor comes from
-		// the request. The endpoint is admin-only and will be behind the RBAC
-		// middleware; the use case already treats the actor as authoritative,
-		// so P04 changes where this value comes from and nothing else.
-		Actor:  domain.AdminActor(strings.TrimSpace(req.ActorID)),
+		Actor:  domain.AdminActor(adminID),
 		Reason: req.Reason,
 	})
 	if err != nil {
@@ -247,15 +262,18 @@ func (h *Handler) setOverride(w http.ResponseWriter, r *http.Request) {
 
 // clearOverrideRequest resets one setting at one scope.
 type clearOverrideRequest struct {
-	Key     string `json:"key"`
-	Level   string `json:"level"`
-	Code    string `json:"code"`
-	Reason  string `json:"reason"`
-	ActorID string `json:"actor_id"`
+	Key    string `json:"key"`
+	Level  string `json:"level"`
+	Code   string `json:"code"`
+	Reason string `json:"reason"`
 }
 
 // DELETE /v1/config/override
 func (h *Handler) clearOverride(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
 	var req clearOverrideRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.WriteError(w, err)
@@ -267,12 +285,109 @@ func (h *Handler) clearOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	change, err := h.reset.Execute(r.Context(), domain.Key(strings.TrimSpace(req.Key)), scope,
-		domain.AdminActor(strings.TrimSpace(req.ActorID)), req.Reason)
+		domain.AdminActor(adminID), req.Reason)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, toChangeResponse(change))
+}
+
+// listChangesRequest narrows GET /v1/admin/config/changes.
+//
+// GET /v1/admin/config/changes?key=&level=&code=&limit=
+func (h *Handler) listChanges(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filter := ports.ChangeFilter{}
+	if key := strings.TrimSpace(q.Get("key")); key != "" {
+		filter.Key = domain.Key(key)
+	}
+	if level := strings.TrimSpace(q.Get("level")); level != "" {
+		scope, err := parseScope(level, q.Get("code"))
+		if err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+		filter.Scope = &scope
+	}
+	if limit := q.Get("limit"); limit != "" {
+		if n, err := strconv.Atoi(limit); err == nil {
+			filter.Limit = n
+		}
+	}
+
+	changes, err := h.changes.Execute(r.Context(), filter)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	out := make([]changeResponse, 0, len(changes))
+	for _, c := range changes {
+		out = append(out, toChangeResponse(c))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"changes": out})
+}
+
+// autotuneRequest is one ALG-09 pass over an area.
+type autotuneRequest struct {
+	Area             string  `json:"area"`
+	District         string  `json:"district"`
+	Division         string  `json:"division"`
+	MerchantsNearby  int     `json:"merchants_nearby"`
+	OrderFailureRate float64 `json:"order_failure_rate"`
+}
+
+type tuneOutcomeResponse struct {
+	Key     string          `json:"key"`
+	Applied bool            `json:"applied"`
+	Skipped string          `json:"skipped,omitempty"`
+	Change  *changeResponse `json:"change,omitempty"`
+}
+
+// POST /v1/admin/config/autotune
+//
+// ALG-09. The signal an operator or a future scheduled job supplies here —
+// merchant density and the order failure rate — is the telemetry this phase
+// has: what the algorithm does with it, not how it is gathered, is what
+// Appendix B specifies.
+func (h *Handler) autotune(w http.ResponseWriter, r *http.Request) {
+	var req autotuneRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	outcomes, err := h.tune.Execute(r.Context(), domain.Placement{
+		AreaCode: req.Area, DistrictCode: req.District, DivisionCode: req.Division,
+	}, domain.TuningSignal{
+		MerchantsNearby: req.MerchantsNearby, OrderFailureRate: req.OrderFailureRate,
+	})
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	out := make([]tuneOutcomeResponse, 0, len(outcomes))
+	for _, o := range outcomes {
+		item := tuneOutcomeResponse{Key: string(o.Key), Applied: o.Applied, Skipped: o.Skipped}
+		if o.Applied {
+			cr := toChangeResponse(o.Change)
+			item.Change = &cr
+		}
+		out = append(out, item)
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": out})
+}
+
+// caller reads the signed-in admin's user id, writing the unauthenticated
+// response itself when there is none.
+func (h *Handler) caller(w http.ResponseWriter, r *http.Request) (string, bool) {
+	userID, ok := h.principal(r)
+	if !ok || userID == "" {
+		httpx.WriteError(w, errs.New(errs.KindUnauthorized, "unauthenticated",
+			"Please sign in."))
+		return "", false
+	}
+	return userID, true
 }
 
 // parseScope turns the wire form into a validated scope.
