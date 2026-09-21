@@ -35,18 +35,27 @@ type Place struct {
 //
 // Note what is absent: the option prices and the customer's note. A rider needs
 // to know they are carrying three biryanis, not what was paid for the extra
-// raita.
+// raita. ItemID is the one exception — review needs it to check that an item
+// rating names something this order actually contained, without a second
+// dependency on catalogue's own contract.
 type Line struct {
 	Name     string
 	Quantity int
+	ItemID   string
 }
 
 // Event is one thing that happened, for tracking's timeline.
+//
+// ActorID travels with Actor so a consumer can tell which partner, not just
+// that some partner, closed an order — review reads it off the "delivered"
+// event to confirm a partner rating names whoever actually delivered it,
+// without a second dependency on dispatch's own contract.
 type Event struct {
-	Status string
-	Actor  string
-	Reason string
-	At     time.Time
+	Status  string
+	Actor   string
+	ActorID string
+	Reason  string
+	At      time.Time
 }
 
 // Order is an order as the rest of the system sees it.

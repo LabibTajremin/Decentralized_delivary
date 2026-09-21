@@ -30,6 +30,7 @@ import (
 	notificationhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/notification/transport/http"
 	orderhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/order/transport/http"
 	paymenthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/transport/http"
+	reviewhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/review/transport/http"
 	trackinghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/tracking/transport/http"
 	userhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/transport/http"
 )
@@ -91,6 +92,7 @@ func servedRoutes() []string {
 	routes = append(routes, paymenthttp.Patterns()...)
 	routes = append(routes, trackinghttp.Patterns()...)
 	routes = append(routes, notificationhttp.Patterns()...)
+	routes = append(routes, reviewhttp.Patterns()...)
 	sort.Strings(routes)
 	return routes
 }
@@ -223,6 +225,11 @@ func TestRequiredParametersAreReallyRequired(t *testing.T) {
 	// Discovery reads its required parameters before it touches a use case, so
 	// nil dependencies are enough to check that it refuses a missing one.
 	discohttp.NewHandler(nil, nil).Register(mux)
+	// Review's rating and review-list reads do the same.
+	openGuard := func(next http.Handler) http.Handler { return next }
+	reviewhttp.NewHandler(nil, nil, nil, nil, nil, nil, nil,
+		openGuard, openGuard, func(*http.Request) (string, bool) { return "", false },
+	).Register(mux)
 
 	checked := 0
 	for path, ops := range loadSpec(t).Paths {

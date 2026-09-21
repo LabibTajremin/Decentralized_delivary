@@ -84,12 +84,13 @@ func (s *Service) Advance(ctx context.Context, orderID, to, actor, actorID, reas
 func toContract(o domain.Order) contract.Order {
 	lines := make([]contract.Line, 0, len(o.Lines))
 	for _, l := range o.Lines {
-		lines = append(lines, contract.Line{Name: l.Name, Quantity: l.Quantity})
+		lines = append(lines, contract.Line{Name: l.Name, Quantity: l.Quantity, ItemID: l.TargetID})
 	}
 	events := make([]contract.Event, 0, len(o.Events))
 	for _, e := range o.Events {
 		events = append(events, contract.Event{
-			Status: string(e.Status), Actor: string(e.Actor), Reason: e.Reason, At: e.At,
+			Status: string(e.Status), Actor: string(e.Actor), ActorID: e.ActorID,
+			Reason: e.Reason, At: e.At,
 		})
 	}
 	return contract.Order{

@@ -61,6 +61,9 @@ import (
 	paymentpg "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/infrastructure/persistence/postgres"
 	paymenthttp "github.com/rootlogic-lab/delivery/backend/internal/modules/payment/transport/http"
 	pricingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/pricing/application"
+	reviewapp "github.com/rootlogic-lab/delivery/backend/internal/modules/review/application"
+	reviewpg "github.com/rootlogic-lab/delivery/backend/internal/modules/review/infrastructure/persistence/postgres"
+	reviewhttp "github.com/rootlogic-lab/delivery/backend/internal/modules/review/transport/http"
 	trackingapp "github.com/rootlogic-lab/delivery/backend/internal/modules/tracking/application"
 	trackinghttp "github.com/rootlogic-lab/delivery/backend/internal/modules/tracking/transport/http"
 	userapp "github.com/rootlogic-lab/delivery/backend/internal/modules/user/application"
@@ -438,6 +441,30 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		trackingapp.NewSnapshotUseCase(orderService, dispatchService),
 		cfg.TrackingStreamInterval,
 		trackinghttp.Guard(authenticator.Authenticated()),
+		func(r *http.Request) (string, bool) {
+			principal, ok := identityhttp.PrincipalFrom(r.Context())
+			return principal.UserID, ok
+		},
+	).Register(mux)
+
+	// Review & support (P16). Owns no storage but its own two small tables:
+	// eligibility for a review, and who a ticket's refund goes to, both come
+	// from OrderContract and PaymentContract — orderService and
+	// paymentService are handed to its external/ seams directly, the same
+	// zero-adapter pattern every phase since P13 has used where the target's
+	// own method already matches the shape a consumer needs.
+	reviewRepo := reviewpg.NewFromPool(pool)
+	reviewRatings := reviewapp.NewRatingsUseCase(reviewRepo)
+	reviewhttp.NewHandler(
+		reviewapp.NewSubmitReviewUseCase(reviewRepo, orderService, systemClock, ids),
+		reviewRatings,
+		reviewapp.NewListReviewsUseCase(reviewRepo),
+		reviewapp.NewRaiseTicketUseCase(reviewRepo, orderService, systemClock, ids),
+		reviewapp.NewResolveTicketUseCase(reviewRepo, paymentService, systemClock),
+		reviewapp.NewMyTicketsUseCase(reviewRepo),
+		reviewapp.NewOpenTicketsUseCase(reviewRepo),
+		reviewhttp.Guard(authenticator.Authenticated()),
+		reviewhttp.Guard(authenticator.Require(identitydomain.RoleAdmin)),
 		func(r *http.Request) (string, bool) {
 			principal, ok := identityhttp.PrincipalFrom(r.Context())
 			return principal.UserID, ok

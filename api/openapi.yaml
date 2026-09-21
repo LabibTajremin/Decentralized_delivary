@@ -83,6 +83,14 @@ tags:
       become a separate .NET service without any other module noticing, which
       is why every shape here is a primitive and nothing is shared with
       orders' own schemas.
+  - name: reviews
+    description: |
+      Ratings and reviews for the three things a customer's opinion can be
+      about — a merchant, a delivery partner, an item — and the support
+      ticket queue a refund decision goes through. Eligibility for a review
+      is checked against the order it names: only its own customer, only
+      once it is delivered, and only for something that order actually
+      involved.
 
 paths:
   /healthz:
@@ -3923,6 +3931,238 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/reviews:
+    post:
+      tags: [reviews]
+      summary: Rate something from a delivered order
+      description: |
+        Eligibility is checked against the order itself: the caller must be
+        its own customer, the order must be delivered, and the subject must
+        be something that order actually involved — the shop it was placed
+        with, an item it contained, or the partner whose delivery closed it.
+        One review per person per subject per order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitReview" }
+      responses:
+        "200":
+          description: The review that was recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "400":
+          description: Malformed request, an invalid subject, or a rating outside 1-5
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: The order named is not the caller's own
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The order is not yet delivered, or this was already reviewed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      tags: [reviews]
+      summary: A subject's own reviews
+      parameters:
+        - { name: subject,    in: query, required: true, schema: { $ref: "#/components/schemas/ReviewSubject" } }
+        - { name: subject_id, in: query, required: true, schema: { type: string } }
+        - { name: limit,      in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: Reviews, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reviews]
+                properties:
+                  reviews:
+                    type: array
+                    items: { $ref: "#/components/schemas/Review" }
+        "400":
+          description: An invalid or missing subject
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/ratings:
+    get:
+      tags: [reviews]
+      summary: A subject's aggregate rating
+      parameters:
+        - { name: subject,    in: query, required: true, schema: { $ref: "#/components/schemas/ReviewSubject" } }
+        - { name: subject_id, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The subject's mean rating and how many reviews it rests on
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rating" }
+        "400":
+          description: An invalid or missing subject
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/support/tickets:
+    post:
+      tags: [reviews]
+      summary: Raise a support ticket about an order
+      description: |
+        No delivered status is required — "this never arrived" is exactly
+        the complaint a ticket exists to raise about an order still out for
+        delivery.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RaiseTicket" }
+      responses:
+        "200":
+          description: The ticket that was opened
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupportTicket" }
+        "400":
+          description: Malformed request, or no reason given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: The order named is not the caller's own
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/me/support/tickets:
+    get:
+      tags: [reviews]
+      summary: The caller's own support tickets
+      responses:
+        "200":
+          description: The caller's tickets, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tickets]
+                properties:
+                  tickets:
+                    type: array
+                    items: { $ref: "#/components/schemas/SupportTicket" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/support/tickets:
+    get:
+      tags: [reviews]
+      summary: The support queue — tickets nobody has resolved yet
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: Open tickets, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tickets]
+                properties:
+                  tickets:
+                    type: array
+                    items: { $ref: "#/components/schemas/SupportTicket" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /v1/admin/support/tickets/resolve:
+    post:
+      tags: [reviews]
+      summary: Resolve a support ticket
+      description: |
+        A "refunded" resolution calls through to payment before the
+        resolution is recorded — a ticket marked refunded whose refund never
+        actually went through would tell a customer money is coming that
+        will never arrive.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveTicket" }
+      responses:
+        "200":
+          description: The resolved ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupportTicket" }
+        "400":
+          description: Malformed request, or not a valid resolution
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: That ticket has already been resolved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: The refund could not be processed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
 
   securitySchemes:
@@ -4020,6 +4260,74 @@ components:
         channel: { type: string, enum: [push, sms, none] }
         status:  { type: string, enum: [sent, failed] }
         created_at: { type: string, format: date-time }
+
+    ReviewSubject:
+      type: string
+      enum: [merchant, partner, item]
+      description: The three things a review can be about.
+
+    SubmitReview:
+      type: object
+      required: [order_id, subject, subject_id, rating]
+      properties:
+        order_id:   { type: string }
+        subject:    { $ref: "#/components/schemas/ReviewSubject" }
+        subject_id: { type: string }
+        rating:     { type: integer, minimum: 1, maximum: 5 }
+        comment:    { type: string }
+
+    Review:
+      type: object
+      required: [id, order_id, subject, subject_id, rating, created_at]
+      properties:
+        id:         { type: string }
+        order_id:   { type: string }
+        subject:    { $ref: "#/components/schemas/ReviewSubject" }
+        subject_id: { type: string }
+        rating:     { type: integer, minimum: 1, maximum: 5 }
+        comment:    { type: string }
+        created_at: { type: string, format: date-time }
+
+    Rating:
+      type: object
+      required: [subject, subject_id, average, count]
+      properties:
+        subject:    { $ref: "#/components/schemas/ReviewSubject" }
+        subject_id: { type: string }
+        average:
+          type: number
+          format: double
+          description: The mean rating out of 5, or 0 with a count of 0 for a subject nobody has reviewed yet.
+        count: { type: integer }
+
+    RaiseTicket:
+      type: object
+      required: [order_id, subject]
+      properties:
+        order_id: { type: string }
+        subject:  { type: string, example: "Item arrived damaged" }
+
+    ResolveTicket:
+      type: object
+      required: [ticket_id, resolution]
+      properties:
+        ticket_id:  { type: string }
+        resolution: { type: string, enum: [refunded, rejected] }
+        note:       { type: string }
+
+    SupportTicket:
+      type: object
+      required: [id, order_id, subject, status, created_at]
+      properties:
+        id:          { type: string }
+        order_id:    { type: string }
+        subject:     { type: string }
+        status:      { type: string, enum: [open, resolved] }
+        resolution:  { type: string, enum: [refunded, rejected] }
+        note:        { type: string }
+        agent_id:    { type: string }
+        created_at:  { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time }
 
     DeliveryPartner:
       type: object

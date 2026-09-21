@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-21T00:00:00Z
-current_phase: P16
-current_task: P16.T01
+current_phase: P17
+current_task: P17.T01 — hard stop, hand over to Opus before starting
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -76,7 +76,8 @@ P12 DONE       dispatch — nationwide partners (D1), D4's distance choice in th
 P13 DONE       payment — PaymentContract only (2.6), idempotent webhooks, atomic COD reconciliation
 P14 DONE       tracking & notification — SSE delivery stream, push tried on every device falling back to SMS
 P15 DONE       admin & auto-tuning — ALG-09 radius tuning within bounds and pins, audit log endpoint, the actor-identity fix
-P16..P20 TODO
+P16 DONE       review & support — ratings for merchant/partner/item, eligibility built entirely from OrderContract, ticket resolution triggers PaymentContract.Refund
+P17..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -448,6 +449,43 @@ P15.T06 DONE  docs/technical/config.md updated with ALG-09 and the actor-identit
   `clamp(v, min, max int64)` shadowed the built-in `min` function within its
   own body — harmless here since the body never called the builtin, but the
   gate still failed it. Renamed the parameters to `lo`/`hi`.
+
+## P16 tasks
+P16.T01 DONE  domain — review.Subject (merchant/partner/item), review.Review, review.Rating (aggregate); ticket.Ticket, ticket.Resolution, Resolve()
+P16.T02 DONE  two small, targeted order/contract additions — Line.ItemID, Event.ActorID — so review's eligibility checks need only OrderContract, per Appendix A's scoping (review consumes order, not dispatch or catalogue); external/order, external/payment (both bare interfaces, no adapter)
+P16.T03 DONE  application — SubmitReviewUseCase (rater-is-customer, delivered, subject-belongs-to-this-order, once-per-subject); RatingsUseCase, ListReviewsUseCase; RaiseTicketUseCase, ResolveTicketUseCase (refunded → PaymentContract.Refund before the ticket is saved resolved, idempotent on the order id), MyTicketsUseCase, OpenTicketsUseCase
+P16.T04 DONE  migration 0012 (reviews, support_tickets — UNIQUE(order_id, rater_id, subject, subject_id) backs the once-per-subject rule at the database too), PostgreSQL repository
+P16.T05 DONE  contract + service — ReviewContract (MerchantRating, PartnerRating), consumed structurally wherever needed per Appendix A; not yet wired into merchant's or dispatch's own transport responses — a deliberate scope decision, see docs/technical/review.md
+P16.T06 DONE  transport — POST/GET /v1/reviews, GET /v1/ratings, POST /v1/support/tickets, GET /v1/me/support/tickets, GET+POST /v1/admin/support/tickets(/resolve); OpenAPI
+P16.T07 DONE  unit, integration and E2E tests at 100%; E2E walks a real order through pickup→delivery, rates all three subjects, and drives a support ticket through an admin's resolution
+P16.T08 DONE  docs/technical/review.md
+
+## What P16's tests found
+
+- **Dispatch's own ordering rule bit the first E2E draft.** A rider who
+  comes online *after* the shop marks an order ready never sees the offer —
+  ALG-04's assignment round runs once, at `ready`, and only asks partners who
+  are already on shift. The first version of `deliveredOrderWithParties`
+  called `onShift` after `walkShopToReady`, and the rider's job list came
+  back empty. Dispatch's own E2E suite (`TestARiderTakesAnOrderToTheDoor`)
+  already documents this ordering in a comment; the fix was reading it and
+  matching it, not adding a poll or a retry.
+- **`ReviewContract`'s scoping (Appendix A: consumed by merchant and
+  dispatch, itself consuming only `OrderContract`) meant review could not
+  ask dispatch "who delivered this order" directly.** The order module's own
+  `"delivered"` event already records the delivering partner's id as its
+  `ActorID` — `DispatchContract.PartnerOfUser`'s doc comment says as much
+  ("the same [partner] id recorded as the actor on an order's 'delivered'
+  event") — so exposing `ActorID` on `order/contract.Event` let a partner
+  review be verified from `OrderContract` alone, with no new cross-module
+  dependency. The same reasoning added `ItemID` to `Line` for item reviews.
+- **A COD order cannot be refunded through `PaymentContract`.** `Refund`
+  looks up the order's most recent gateway attempt, and a cash order never
+  has one — so resolving a cash order's ticket as "refunded" fails with
+  `refund_failed` (503) rather than silently succeeding or panicking. Proven
+  by an application-level test with a failing fake payment service; not
+  something this phase builds a cash-specific path around, the same kind of
+  honest scoping decision P15 made for ALG-09.
 
 ## P17 pre-brief (for whoever picks up the Flutter work)
 
