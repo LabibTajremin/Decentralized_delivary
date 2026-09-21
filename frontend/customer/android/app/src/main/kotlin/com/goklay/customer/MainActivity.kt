@@ -1,0 +1,5 @@
+package com.goklay.customer
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()

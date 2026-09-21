@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-21T16:00:00Z
-current_phase: P17
-current_task: P18.T01
+current_phase: P18
+current_task: P19.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
@@ -24,11 +24,24 @@ going.
 **No model switch is left.** P13–P16 ran on Sonnet 5; the user switched to Opus
 for P17 and P17–P20 all run there. Keep going to P20.
 
-Next action: **start P18 (Flutter customer app)** — read
-`docs/build/phases/P18.md`, write its task list into a `## P18 tasks` section
+Next action: **start P19 (Flutter merchant and partner apps)** — read
+`docs/build/phases/P19.md`, write its task list into a `## P19 tasks` section
 below, and build it the way every other phase was built (`CLAUDE.md` → "How a
-phase goes"). `docs/technical/frontend.md` → "What P18 and P19 inherit" is the
-short version of what the foundation already gives you.
+phase goes"). `docs/technical/frontend.md` is the foundation both apps stand
+on, and `docs/technical/customer-app.md` is the pattern P18 settled: models →
+per-feature API clients → `Dependencies` + `AppScope` → screens with callbacks
+→ `routes.dart`. Copy it rather than inventing a second shape.
+
+Two things from P18 that P19 will hit immediately:
+
+* **The APK is at 18.4 MB against a 20 MB ceiling** (arm64, release,
+  split-per-abi). One customer app already costs that much, mostly fonts and
+  the Flutter engine. A merchant or partner app that grows the same way will
+  fail `scripts/apk-size-check.sh`, so watch it from the first screen rather
+  than at the end.
+* **`docs/design-gaps.md` is the register** for a Figma screen with no
+  backend, or a backend surface with no Figma screen. Add to it; do not invent
+  a screen, and do not silently drop one.
 
 Before running anything:
 
@@ -95,7 +108,8 @@ P14 DONE       tracking & notification — SSE delivery stream, push tried on ev
 P15 DONE       admin & auto-tuning — ALG-09 radius tuning within bounds and pins, audit log endpoint, the actor-identity fix
 P16 DONE       review & support — ratings for merchant/partner/item, eligibility built entirely from OrderContract, ticket resolution triggers PaymentContract.Refund
 P17 DONE       Flutter foundation — pub workspace + goklay_core, Figma tokens, 48dp/contrast floor enforced by tests, Bengali-first l10n with the font the design lacks, API transport, thin-client lint proven
-P18..P20 TODO
+P18 DONE       Flutter customer app — 27 screens on the P17 foundation, the Figma registry reconciled against the API in docs/design-gaps.md, every enabled state a server flag, 100% coverage; added order.merchant_id/partner_id so the review screen can name a subject P16 will accept
+P19..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -504,6 +518,56 @@ P16.T08 DONE  docs/technical/review.md
   by an application-level test with a failing fake payment service; not
   something this phase builds a cash-specific path around, the same kind of
   honest scoping decision P15 made for ALG-09.
+
+## P18 tasks
+
+The screen registry was read out of Figma `NlVjn8OuvmLjbm8z8TDVlR` on
+2026-09-21 and reconciled against `api/openapi.yaml` in `docs/design-gaps.md`
+before any screen was written. The shopping flow is drawn three times in the
+file — food, pharmacy, grocery — and is the same eleven screens each time, so
+it is built once and the vertical is a `type` filter on discovery.
+
+```
+P18.T01 DONE  screen registry read from Figma NlVjn8OuvmLjbm8z8TDVlR; docs/design-gaps.md reconciles it against api/openapi.yaml in both directions
+P18.T02 DONE  ten model files covering every customer response shape; json.dart readers with a defined answer for every missing or mistyped field
+P18.T03 DONE  eleven feature API clients on GoklayApiClient, plus TrackingApi — its own SSE reader, because the shared client decodes a whole body once and a stream is the opposite of that
+P18.T04 DONE  Dependencies + AppScope (one object, no locator); Navigator 1.0 in routes.dart, no router package
+P18.T05 DONE  shared widgets — AsyncView over the sealed AsyncValue, ErrorView/EmptyView/NotAvailableView, ReceiptView, QuantityStepper, StarRating, CustomerScaffold
+P18.T06 DONE  splash, onboarding, sign-in options, phone, OTP (countdown from the server's resend_after), verification success/failure
+P18.T07 DONE  home/discovery (searches the default address, sends only the level the server named, stops at D3's ceiling), shop menu, item detail
+P18.T08 DONE  cart (every change round-trips; checkout reads Cart.orderable and nothing else), review cart, place order (one idempotency key per attempt)
+P18.T09 DONE  orders list (live is a server filter), order detail, live tracking, payment
+P18.T10 DONE  account, profile, addresses, add address, language, notifications, security, and the eight gap placeholders
+P18.T11 DONE  reviews (shop always, rider only when one collected it) and support tickets
+P18.T12 DONE  16 test files, 273 tests, 100% coverage with coverage-exclusions.txt still empty
+P18.T13 DONE  ./scripts/verify.sh exits 0; docs/technical/customer-app.md; this file
+```
+
+## What P18's tests found
+
+Four real defects, each found by a widget test rather than by review:
+
+* **The save button on the address form never enabled.** `lat` and `lng`
+  decide whether there is anything to send and nothing was listening to those
+  two controllers, so typing a coordinate did not rebuild the button.
+* **The device list never showed a failure.** "Sign out everywhere" reported
+  its error into a subtree that was not listening to the `ActionRunner`, so a
+  refused revocation looked like nothing happening.
+* **Signing out from the device list left the device list on screen.** The
+  app's two halves are swapped underneath the navigator, so a pushed route
+  survives the swap. `CustomerRoutes.security` now pops to the root first.
+* **Two account rows read the same Bengali word.** Account security and the
+  Figma "GoKlay Safety" screen were both `নিরাপত্তা`; a finder that expected
+  one row found two. Safety is now `সুরক্ষা`.
+
+Three things about the test harness are worth knowing before adding to it:
+`pumpAndSettle` never returns over a spinner (the harness pumps twice
+instead); Flutter builds no semantics node for an off-screen widget, so
+`find.bySemanticsLabel` is empty for a button below the fold in a `ListView`
+(`revealAndTap` scrolls first, through the list's own scrollable rather than a
+`TextField`'s); and a stream ending runs on the real event loop, not the fake
+one a pump drives, so the tracking tests wrap a short delay in
+`tester.runAsync`.
 
 ## P17 tasks
 P17.T01 DONE  Flutter 3.47.5 toolchain; frontend/ as a Dart pub workspace; goklay_core package; strict analysis_options (public_member_api_docs, matching the backend's documented-or-fail standard); flutter-coverage-gate.sh taught that a workspace root is not an app

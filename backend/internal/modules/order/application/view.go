@@ -84,6 +84,14 @@ type View struct {
 	ID   string
 	Code string
 
+	// MerchantID and PartnerID are here so the customer's app can review the
+	// two parties it dealt with. P16 refuses a review whose subject was not
+	// actually on the order, and without these the app would have no way to
+	// name a subject it is entitled to review. PartnerID is empty until a
+	// rider has actually collected it.
+	MerchantID string
+	PartnerID  string
+
 	Status      string
 	StatusLabel string
 	Live        bool
@@ -151,6 +159,7 @@ func viewFor(o domain.Order, actor domain.Actor, cancel CancelView, lang string)
 
 	return View{
 		ID: o.ID, Code: o.Code,
+		MerchantID: o.MerchantID, PartnerID: partnerOf(o),
 		Status: string(o.Status), StatusLabel: statusLabel(o.Status, lang),
 		Live: o.Status.IsLive(), Payment: string(o.Payment),
 		Lines: lines, Count: o.Count(),
@@ -171,6 +180,20 @@ func viewFor(o domain.Order, actor domain.Actor, cancel CancelView, lang string)
 		Events: events, NextActions: actions, Cancel: cancel,
 		PlacedAt: o.PlacedAt, UpdatedAt: o.UpdatedAt,
 	}
+}
+
+// partnerOf is the rider who collected the order, or empty.
+//
+// Taken from the pickup event rather than from a field, because the order does
+// not hold one: dispatch owns the assignment, and the event is the order's own
+// record of who actually took it.
+func partnerOf(o domain.Order) string {
+	for _, e := range o.Events {
+		if e.Status == domain.StatusPickedUp {
+			return e.ActorID
+		}
+	}
+	return ""
 }
 
 // receiptOf rebuilds the receipt from the frozen charges.

@@ -182,6 +182,8 @@ type cancelBody struct {
 type orderBody struct {
 	ID          string           `json:"id"`
 	Code        string           `json:"code"`
+	MerchantID  string           `json:"merchant_id"`
+	PartnerID   string           `json:"partner_id,omitempty"`
 	Status      string           `json:"status"`
 	StatusLabel string           `json:"status_label"`
 	Live        bool             `json:"live"`
@@ -512,6 +514,7 @@ func toBody(view application.View) orderBody {
 	}
 	return orderBody{
 		ID: view.ID, Code: view.Code,
+		MerchantID: view.MerchantID, PartnerID: view.PartnerID,
 		Status: view.Status, StatusLabel: view.StatusLabel,
 		Live: view.Live, Payment: view.Payment,
 		Lines: lines, Count: view.Count,
