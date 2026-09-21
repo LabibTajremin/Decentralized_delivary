@@ -1,7 +1,7 @@
 # BUILD STATE
 last_updated: 2026-09-21T00:00:00Z
-current_phase: P17
-current_task: P17.T01 — hard stop, hand over to Opus before starting
+current_phase: P16
+current_task: P17.T01 — hard stop before starting; switch to Opus first
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
