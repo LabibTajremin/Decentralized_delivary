@@ -30,7 +30,7 @@ func TestWriteJSONSetsStatusAndContentType(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Errorf("status = %d, want 201", rec.Code)
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 		t.Errorf("content-type = %q", ct)
 	}
 	if strings.TrimSpace(rec.Body.String()) != `{"id":"abc"}` {

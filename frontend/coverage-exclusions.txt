@@ -1,0 +1,13 @@
+# Flutter coverage exclusions, mirroring backend/tests/coverage-exclusions.txt.
+#
+# Each line is an lcov path pattern removed before the 100% gate is applied,
+# and each one needs a justification beside it. The permitted reasons are the
+# same as the backend's (00-rules.md 3.3): generated code, wiring covered by
+# an end-to-end test instead, and vendored code. Anything else needs an ADR.
+#
+# As of P17 this file is empty, and that is a deliberate result rather than an
+# oversight. The foundation writes no generated code: the localisation tables
+# are hand-written precisely because eight strings do not justify a code
+# generator whose output the gate would then have to be taught to ignore. If a
+# later phase adds codegen — an OpenAPI client, freezed models — its output
+# belongs here with a one-line reason.

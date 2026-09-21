@@ -148,7 +148,7 @@ func TestHealthEndpoint(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 

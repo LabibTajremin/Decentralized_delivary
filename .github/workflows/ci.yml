@@ -124,6 +124,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.detect.outputs.present == 'true'
         with:
+          # Pinned rather than tracking stable. A toolchain that upgrades
+          # itself turns "the phase was green" into "the phase was green on
+          # whatever Flutter shipped that morning", and this is the same
+          # repository that gates on 100% coverage.
+          flutter-version: 3.47.5
           channel: stable
 
       # Check 8
@@ -135,6 +140,12 @@ jobs:
       # step is never silently absent.
       - name: thin-client lint
         run: ./scripts/thin-client-lint.sh
+
+      # Check 9a — proves check 9 by feeding it violations on purpose. Runs
+      # with or without Dart sources: a lint nobody has watched fail is not
+      # known to work, and this one guards the rule the whole product rests on.
+      - name: thin-client lint self-test
+        run: ./scripts/thin-client-lint-selftest.sh
 
       # Check 9b
       - name: APK size budget

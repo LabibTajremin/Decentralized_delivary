@@ -40,7 +40,11 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 			"Something went wrong on our side."))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	// The charset is explicit because it has to be. JSON is UTF-8 by
+	// definition (RFC 8259 s8.1), but Dart's package:http decodes a body with
+	// no declared charset as latin1 — which turns every Bengali sentence this
+	// server composes into mojibake on the client that reads it.
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }

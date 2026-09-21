@@ -48,6 +48,9 @@ step "OpenAPI matches the served routes" bash -c 'cd backend/tests && go test ./
 step "migrations up and down" ./scripts/migrate-check.sh
 step "tests and coverage gate" ./scripts/coverage-gate.sh
 step "thin-client lint"    ./scripts/thin-client-lint.sh
+# Runs whether or not any Dart exists yet: it proves the lint by feeding it
+# violations of its own, so it is meaningful before the first screen is built.
+step "thin-client lint self-test" ./scripts/thin-client-lint-selftest.sh
 
 if [[ -d frontend && -f frontend/pubspec.yaml ]]; then
   step "flutter analyze"       bash -c 'cd frontend && flutter analyze'

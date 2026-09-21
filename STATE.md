@@ -1,13 +1,13 @@
 # BUILD STATE
-last_updated: 2026-09-21T00:00:00Z
-current_phase: P16
-current_task: P17.T01 — hard stop before starting; switch to Opus first
+last_updated: 2026-09-21T16:00:00Z
+current_phase: P17
+current_task: P18.T01
 current_branch: claude/goklay-design-system-9z500x
 status: IN_PROGRESS
 blocked: false
 blocker_reason: ""
 model_plan: P13-P16 Sonnet 5, P17-P20 Opus
-stop_after: P16          # finish P16, hand over, do not start P17
+stop_after: P20          # P17-P20 all run on Opus; no further model switch
 
 ## Resume here
 
@@ -21,22 +21,39 @@ not stop, do not merge anything, do not open a pull request, push only to
 resume when it resets. "Continue" means: pick up `current_task` above and keep
 going.
 
-**Stop after P16.** P13–P16 are this model's; P17 is where the user switches to
-Opus, because the Flutter foundation decides what P18 and P19 are built on. When
-P16 is committed and pushed, run `./scripts/handover.sh`, tell the user P16 is
-done and P17 wants the model switched, and stop there. `CLAUDE.md` →
-"Which model runs which phase" has the whole procedure.
+**No model switch is left.** P13–P16 ran on Sonnet 5; the user switched to Opus
+for P17 and P17–P20 all run there. Keep going to P20.
 
-Next action: **start P15 (Admin & auto-tuning)** — read
-`docs/build/phases/P15.md`, write its task list into a `## P15 tasks` section
+Next action: **start P18 (Flutter customer app)** — read
+`docs/build/phases/P18.md`, write its task list into a `## P18 tasks` section
 below, and build it the way every other phase was built (`CLAUDE.md` → "How a
-phase goes").
+phase goes"). `docs/technical/frontend.md` → "What P18 and P19 inherit" is the
+short version of what the foundation already gives you.
 
 Before running anything:
 
 ```bash
 ./scripts/verify.sh      # every gate CI runs, services started for you
 ```
+
+**The Flutter toolchain is not in the repo, and the container is ephemeral.**
+A fresh session has Go, Postgres and Redis but no Flutter, and `verify.sh` will
+fail its last three gates without one. Reinstall it the way P17 did — it takes
+a few minutes and needs no configuration afterwards:
+
+```bash
+curl -sS -o /tmp/flutter.tar.xz \
+  https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.5-stable.tar.xz
+tar -xf /tmp/flutter.tar.xz -C /opt
+ln -sf /opt/flutter/bin/flutter /usr/local/bin/flutter
+ln -sf /opt/flutter/bin/dart    /usr/local/bin/dart
+git config --global --add safe.directory /opt/flutter
+flutter config --no-analytics
+```
+
+3.47.5 is the version CI is pinned to (`.github/workflows/ci.yml`) and the one
+`frontend/goklay_core/pubspec.yaml` constrains against. Running a different one
+is how a phase goes green here and red in CI.
 
 That is also how a phase ends: it must exit 0 before the phase is committed as
 done.
@@ -77,7 +94,8 @@ P13 DONE       payment — PaymentContract only (2.6), idempotent webhooks, atom
 P14 DONE       tracking & notification — SSE delivery stream, push tried on every device falling back to SMS
 P15 DONE       admin & auto-tuning — ALG-09 radius tuning within bounds and pins, audit log endpoint, the actor-identity fix
 P16 DONE       review & support — ratings for merchant/partner/item, eligibility built entirely from OrderContract, ticket resolution triggers PaymentContract.Refund
-P17..P20 TODO
+P17 DONE       Flutter foundation — pub workspace + goklay_core, Figma tokens, 48dp/contrast floor enforced by tests, Bengali-first l10n with the font the design lacks, API transport, thin-client lint proven
+P18..P20 TODO
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -487,9 +505,53 @@ P16.T08 DONE  docs/technical/review.md
   something this phase builds a cash-specific path around, the same kind of
   honest scoping decision P15 made for ALG-09.
 
-## P17 pre-brief (for whoever picks up the Flutter work)
+## P17 tasks
+P17.T01 DONE  Flutter 3.47.5 toolchain; frontend/ as a Dart pub workspace; goklay_core package; strict analysis_options (public_member_api_docs, matching the backend's documented-or-fail standard); flutter-coverage-gate.sh taught that a workspace root is not an app
+P17.T02 DONE  design tokens read from Figma NlVjn8OuvmLjbm8z8TDVlR — seven colours, one derived tint, the Manrope/Poppins type scale — each carrying the variable name or node id it came from; ThemeData built by naming every colour rather than seeding one
+P17.T03 DONE  Noto Sans Bengali shipped as the fallback on every style, because neither Manrope nor Poppins contains a single Bengali glyph and Bengali is the default language
+P17.T04 DONE  accessibility floor enforced by tests over the real theme — GoklayTapTarget pads any control to 48dp without changing how it paints; GoklayContrast asserts every pair this library renders clears WCAG AA
+P17.T05 DONE  Bengali-first localisation: seven hand-written strings (the server composes everything else), Bengali first in supportedLocales, lang=en sent only for English; layout tested at 320dp in Bengali
+P17.T06 DONE  API transport — Money with no arithmetic, Capability, the error envelope, ETag/stale-while-revalidate cache with an offline read fallback, and the FIFO OfflineQueue the partner app needs
+P17.T07 DONE  thin-client lint proven by scripts/thin-client-lint-selftest.sh, which feeds it six violations and three legal patterns; wired into verify.sh and CI, and it runs with or without Dart present
+P17.T08 DONE  113 Flutter tests at 100% coverage with an empty exclusions file; docs/technical/frontend.md; CI pinned to Flutter 3.47.5
 
-Written while the backend was fresh, so the next session does not have to
+## What P17's tests found
+
+- **The backend was about to hand the app mojibake.** `package:http` decodes a
+  response body using the charset in the Content-Type header and falls back to
+  **latin1** when there is none, and `httpx.WriteJSON` was sending
+  `application/json` with no charset. JSON is UTF-8 by definition (RFC 8259
+  §8.1), so every Bengali sentence the server composes would have arrived
+  corrupted — and since Bengali is the default language, that is every screen
+  of the product. Found by a test whose only crime was putting a real Bengali
+  message in a mocked error body. Fixed on both sides: the backend now labels
+  the charset, and the transport decodes `bodyBytes` as UTF-8 itself rather
+  than trusting the header, because the client must not depend on the server
+  remembering. Both fixes have tests. This is the third phase running where
+  the defect only existed at the seam between two layers.
+- **The design's fonts cannot render the design's own product.** Manrope and
+  Poppins contain zero Bengali glyphs — checked against the cmap of every
+  shipped weight, not assumed — while Bengali is the default language. Without
+  a fallback face the entire app renders as substituted faces or empty boxes
+  for most of its users. Noto Sans Bengali now ships as the fallback on every
+  style, and a test fails any style that loses it.
+- **Three colour pairings in the Figma file do not clear WCAG AA**, including
+  one the design uses for a promo code: brand green on its own 15% tint is
+  3.73:1 at 16px SemiBold, which WCAG does not count as large text. Soft Red on
+  white is 3.05:1 and Emerald on white is 2.54:1. The palette was left exactly
+  as the design defines it — inventing colours here would be inventing design —
+  and each limit is recorded as its own passing test, with the way out
+  asserted alongside it (textPrimary on that tint clears AA comfortably).
+  White on the brand green passes at 4.52:1, which is close enough that the
+  brand green must not be lightened.
+- **The design's buttons are under the touch-target floor.** 12pt of padding
+  around a 14pt label is about 41dp against a 48dp requirement. Resolved by
+  separating what is painted from what is hit rather than by redrawing the
+  design.
+
+## P17 pre-brief (executed — kept for the reasoning behind the above)
+
+Written while the backend was fresh, so the next session did not have to
 re-derive it.
 
 - **Three apps, one foundation.** `frontend/customer`, `frontend/merchant` and

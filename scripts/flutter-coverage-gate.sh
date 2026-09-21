@@ -7,8 +7,21 @@ EXCLUSIONS="${REPO_ROOT}/frontend/coverage-exclusions.txt"
 
 FOUND=0
 while IFS= read -r pubspec; do
-  FOUND=1
   app_dir="$(dirname "${pubspec}")"
+
+  # A pub workspace root is not a package: it has no lib/ and no test/ of its
+  # own, it exists so one `pub get` resolves every app under frontend/ against
+  # one lockfile. Its members are each measured below in their own right, so
+  # skipping it here hides nothing — and running `flutter test` in a directory
+  # with no tests would fail the gate for a directory that has nothing to
+  # cover. A package that declares a workspace *and* has tests is still
+  # measured.
+  if grep -qE '^workspace:' "${pubspec}" && [[ ! -d "${app_dir}/test" ]]; then
+    echo "==> skipping ${app_dir} (workspace root, no tests of its own)"
+    continue
+  fi
+
+  FOUND=1
   echo "==> flutter test --coverage (${app_dir})"
   ( cd "${app_dir}" && flutter pub get >/dev/null && flutter test --coverage )
 
