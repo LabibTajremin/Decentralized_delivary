@@ -151,8 +151,35 @@ func redisOptions(url string, logger *slog.Logger) *goredis.Options {
 func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, redisClient *goredis.Client) (http.Handler, error) {
 	mux := http.NewServeMux()
 
+	// Liveness. Deliberately dependency-free: it answers as long as the
+	// process can serve a request, which is the only question an orchestrator's
+	// restart decision should depend on. Restarting the API because Postgres
+	// is down fixes nothing and takes the healthy replicas with it.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	// Readiness, which is the other question: should this instance be sent
+	// traffic? It should not while it cannot reach its stores, so this one
+	// really does touch both. The timeout is short because a probe that hangs
+	// is a probe that has already failed.
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := pool.Ping(ctx); err != nil {
+			logger.Warn("readiness: database unreachable", "error", err)
+			httpx.WriteJSON(w, http.StatusServiceUnavailable,
+				map[string]string{"status": "unready", "dependency": "database"})
+			return
+		}
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			logger.Warn("readiness: redis unreachable", "error", err)
+			httpx.WriteJSON(w, http.StatusServiceUnavailable,
+				map[string]string{"status": "unready", "dependency": "redis"})
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
 	// Geo (P02).

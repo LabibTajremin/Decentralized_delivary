@@ -255,3 +255,84 @@ func TestGracefulShutdown(t *testing.T) {
 		t.Error("server still answering after shutdown")
 	}
 }
+
+// TestReadinessIsTheProbeThatTouchesTheStores.
+//
+// The two probes answer different questions and a runbook that confuses them
+// causes an outage rather than preventing one: a failed liveness check
+// restarts the process, and restarting it because Postgres is unreachable
+// fixes nothing while taking the healthy replicas down with it. So
+// `/healthz` must stay dependency-free and `/readyz` must not.
+//
+// Both halves are asserted here, because a readiness probe that cannot go red
+// is a readiness probe in name only.
+func TestReadinessIsTheProbeThatTouchesTheStores(t *testing.T) {
+	bin := buildAPI(t)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// startAPI's own defaults point at the compose ports, which are not
+	// necessarily where this machine's Postgres is. The probe under test is
+	// about reachability, so the URLs it is given have to be the real ones.
+	goodDB := "DATABASE_URL=" + dbtestSchemaURL(t)
+	goodRedis := "REDIS_URL=" + os.Getenv("REDIS_URL")
+
+	read := func(t *testing.T, url string) (int, map[string]string) {
+		t.Helper()
+		resp, err := client.Get(url) //nolint:noctx // fixed test-local URL
+		if err != nil {
+			t.Fatalf("GET %s: %v", url, err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var body map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode %s: %v", url, err)
+		}
+		return resp.StatusCode, body
+	}
+
+	t.Run("ready when both stores answer", func(t *testing.T) {
+		base, stop := startAPI(t, bin, goodDB, goodRedis)
+		defer stop()
+
+		if status, body := read(t, base+"/readyz"); status != http.StatusOK ||
+			body["status"] != "ready" {
+			t.Errorf("readyz = %d %v, want 200 ready", status, body)
+		}
+	})
+
+	// The process does not connect to either store at startup, which is what
+	// makes these two cases testable at all: it comes up, serves /healthz, and
+	// only the readiness probe notices that nothing is behind it.
+	t.Run("unready, and says which dependency, when the database is gone", func(t *testing.T) {
+		base, stop := startAPI(t, bin, goodRedis,
+			"DATABASE_URL=postgres://delivery@127.0.0.1:1/nowhere?sslmode=disable")
+		defer stop()
+
+		if status, body := read(t, base+"/healthz"); status != http.StatusOK {
+			t.Errorf("healthz = %d %v; liveness must not depend on Postgres", status, body)
+		}
+		status, body := read(t, base+"/readyz")
+		if status != http.StatusServiceUnavailable {
+			t.Errorf("readyz = %d, want 503", status)
+		}
+		if body["dependency"] != "database" {
+			t.Errorf("readyz names %q; an operator cannot tell what to fix", body["dependency"])
+		}
+	})
+
+	t.Run("unready, and says which dependency, when redis is gone", func(t *testing.T) {
+		base, stop := startAPI(t, bin, goodDB, "REDIS_URL=redis://127.0.0.1:1/0")
+		defer stop()
+
+		if status, body := read(t, base+"/healthz"); status != http.StatusOK {
+			t.Errorf("healthz = %d %v; liveness must not depend on Redis", status, body)
+		}
+		status, body := read(t, base+"/readyz")
+		if status != http.StatusServiceUnavailable {
+			t.Errorf("readyz = %d, want 503", status)
+		}
+		if body["dependency"] != "redis" {
+			t.Errorf("readyz names %q; an operator cannot tell what to fix", body["dependency"])
+		}
+	})
+}

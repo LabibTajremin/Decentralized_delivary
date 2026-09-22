@@ -6,7 +6,7 @@ on:
   pull_request:
 
 env:
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.25"
 
 jobs:
   backend:
@@ -156,6 +156,26 @@ jobs:
       - name: flutter test with coverage gate
         if: steps.detect.outputs.present == 'true'
         run: ./scripts/flutter-coverage-gate.sh
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            backend/go.mod
+            backend/tests/go.mod
+
+      # Check 12. Its own job rather than a step in `backend`, because it is
+      # the one check that needs the network: govulncheck downloads the Go
+      # vulnerability database. Keeping it out of verify.sh is what lets
+      # verify.sh run on a container with no outbound access —
+      # docs/security-review.md records the reasoning and the last result.
+      - name: govulncheck
+        run: ./scripts/vuln-scan.sh
 
   e2e:
     name: E2E

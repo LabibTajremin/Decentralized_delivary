@@ -109,6 +109,42 @@ paths:
                 properties:
                   status: { type: string, example: ok }
 
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: |
+        Whether this instance should be sent traffic. Unlike `/healthz` it
+        touches both stores, because an API that cannot reach Postgres or
+        Redis can answer a probe and nothing else.
+
+        The distinction matters to an orchestrator: a failed liveness check
+        restarts the process, and restarting it because the database is down
+        fixes nothing while taking the healthy replicas with it. A failed
+        readiness check only takes this instance out of the load balancer,
+        which is the correct response.
+      security: []
+      responses:
+        "200":
+          description: Ready for traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, example: ready }
+        "503":
+          description: A dependency could not be reached
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, dependency]
+                properties:
+                  status:     { type: string, example: unready }
+                  dependency: { type: string, enum: [database, redis] }
+
   /v1/geo/resolve:
     get:
       tags: [geo]

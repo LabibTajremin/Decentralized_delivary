@@ -1,57 +1,62 @@
 # BUILD STATE
-last_updated: 2026-09-21T16:00:00Z
-current_phase: P19
-current_task: P20.T01
+last_updated: 2026-09-22T00:00:00Z
+current_phase: P20
+current_task: none — the build is complete
 current_branch: claude/goklay-design-system-9z500x
-status: IN_PROGRESS
+status: COMPLETE
 blocked: false
 blocker_reason: ""
 model_plan: P13-P16 Sonnet 5, P17-P20 Opus
 stop_after: P20          # P17-P20 all run on Opus; no further model switch
 
-## Resume here
+## The build is finished
 
-A fresh session starts with no memory of how any of this was built. Read
-`CLAUDE.md` (the working agreement) and then this file; together they are the
-whole context.
+All twenty-one phases, P00 through P20, are done. `./scripts/verify.sh` exits
+0 and everything is committed and pushed to
+`claude/goklay-design-system-9z500x`.
 
-Standing order from the user, still in force: **finish all twenty phases, do
-not stop, do not merge anything, do not open a pull request, push only to
-`claude/goklay-design-system-9z500x`.** Pausing at a usage limit is fine —
-resume when it resets. "Continue" means: pick up `current_task` above and keep
-going.
+**Read `BUILD_COMPLETE.md` first.** It is the summary §0.5 asks for: what
+exists, what the gates say, and — the part that matters most — what is
+deliberately absent and why.
 
-**No model switch is left.** P13–P16 ran on Sonnet 5; the user switched to Opus
-for P17 and P17–P20 all run there. Keep going to P20.
+The one thing left is the user's: **merging.** The standing instruction was
+never to merge and never to open a pull request; the user merges once, at the
+end. That is §0.5's condition 2 and the only one outstanding.
 
-Next action: **start P20 (hardening and release)** — the last phase. Read
-`docs/build/phases/P20.md`, write its task list into a `## P20 tasks` section
-below, and finish it.
+If this session is being continued anyway, there is no `current_task` to pick
+up. The three things a new session would most plausibly be asked to do, and
+where each starts:
 
-What the previous three phases leave for it:
+* **Deploy it** — `docs/runbook.md`, and §0 of it first, because two release
+  blockers fail closed by design: there is no SMS provider and no payment
+  gateway, and the binary refuses to start in production without either.
+* **Act on the security review** — `docs/security-review.md` §4 has four
+  recommendations, in the order they are worth doing. None is a live
+  vulnerability.
+* **Schedule the dispatch heartbeat** — `docs/runbook.md` §6. There is no
+  background worker in the binary, and without an external sweep every 10–15
+  seconds, orders reach `ready` and no rider is ever offered one.
 
-* **Three release APKs at ~17.2–17.5 MB against a 20 MB ceiling**, recorded in
-  `frontend/apk-size-baseline.txt`. Most of that is the Flutter engine and the
-  ten font files P17 shipped so Bengali renders at all. The gate also refuses
-  more than 10% growth against those figures.
+What the last three phases left, for context:
+
+* **Three release APKs at 17.50 / 17.38 / 17.19 MB** against a 20 MB ceiling,
+  recorded in `frontend/apk-size-baseline.txt`, gated against 10% growth.
 * **`docs/design-gaps.md`** lists everything the design asks for that the
   backend has not got, and everything the backend has that the design never
-  drew. P20 should read it before deciding anything is missing.
-* **`goklay_core` is the shared half of all three apps** — tokens, theme, the
-  accessibility floor, localisation, the transport, the state primitives, the
-  shared widgets and the whole sign-in flow. A change there lands in three
-  apps at once, which is the point and also the risk.
+  drew. Read it before concluding anything was forgotten.
+* **`goklay_core` is the shared half of all three apps.** A change there
+  lands in three apps at once, which is the point and also the risk.
 
 Before running anything:
 
 ```bash
 ./scripts/verify.sh      # every gate CI runs, services started for you
+./scripts/vuln-scan.sh   # govulncheck; needs network, so not in verify.sh
 ```
 
 **The Flutter toolchain is not in the repo, and the container is ephemeral.**
-A fresh session has Go, Postgres and Redis but no Flutter, and `verify.sh` will
-fail its last three gates without one. Reinstall it the way P17 did — it takes
-a few minutes and needs no configuration afterwards:
+A fresh session has Go, Postgres and Redis but no Flutter, and `verify.sh`
+will fail its last three gates without one. Reinstall it the way P17 did:
 
 ```bash
 curl -sS -o /tmp/flutter.tar.xz \
@@ -64,29 +69,20 @@ flutter config --no-analytics
 ```
 
 3.47.5 is the version CI is pinned to (`.github/workflows/ci.yml`) and the one
-`frontend/goklay_core/pubspec.yaml` constrains against. Running a different one
-is how a phase goes green here and red in CI.
+`frontend/goklay_core/pubspec.yaml` constrains against.
 
-That is also how a phase ends: it must exit 0 before the phase is committed as
-done.
+## Nothing is left, in build terms
 
-## What is left
+Every phase is `DONE` in the table below. The gates are green. What remains is
+not development:
 
-| Phase | What it is | Acceptance, in short |
-|---|---|---|
-| P13 | Payment | PaymentContract only, COD ledger reconciles, idempotent webhooks |
-| P14 | Tracking & notifications | status and location streams deliver; SMS falls back when push fails |
-| P15 | Admin & auto-tuning | every Appendix B variable admin-controllable per area; ALG-09 within bounds and logged; **the division ceiling still cannot be disabled** |
-| P16 | Reviews & support | ratings for merchant, partner and item; the refund workflow completes |
-| P17 | Flutter foundation | tokens from the Figma file, thin-client lint wired *before* any screen, 48dp targets, Bengali string lengths |
-| P18 | Flutter customer app | every customer screen in the Figma registry, no money arithmetic in the app, capability flags drive enabled states |
-| P19 | Flutter merchant & partner apps | every merchant and partner screen, same thin-client rule |
-| P20 | Hardening & release | full E2E regression, load test on discovery and dispatch, security review, production runbook |
-
-The backend seams the later phases are meant to use already exist: payment has
-`OrderContract.MarkPaid` / `MarkPaymentFailed` and the system-only
-`pending_payment → placed` move; tracking has the order event history and the
-dispatch job; admin has the config module's registry and audit log.
+| Outstanding | Whose |
+|---|---|
+| Merging the branch | the user's, by standing instruction |
+| An SMS provider adapter | needed before production; the binary refuses to start without one |
+| A payment gateway adapter | the same; only cash-on-delivery works until then |
+| The dispatch heartbeat, scheduled externally | an operator's, `docs/runbook.md` §6 |
+| Four security recommendations | `docs/security-review.md` §4, none a live vulnerability |
 
 ## Phase status
 P00 DONE       foundation, gates, CI
@@ -109,7 +105,7 @@ P16 DONE       review & support — ratings for merchant/partner/item, eligibili
 P17 DONE       Flutter foundation — pub workspace + goklay_core, Figma tokens, 48dp/contrast floor enforced by tests, Bengali-first l10n with the font the design lacks, API transport, thin-client lint proven
 P18 DONE       Flutter customer app — 27 screens on the P17 foundation, the Figma registry reconciled against the API in docs/design-gaps.md, every enabled state a server flag, 100% coverage; added order.merchant_id/partner_id so the review screen can name a subject P16 will accept
 P19 DONE       merchant & partner apps — no Figma frames existed for either, so both are built from the API surface and goklay_core's tokens (docs/design-gaps.md); goklay_core absorbed the app-agnostic half of P18 rather than it being copied twice; the offline queue P17 built is finally used, by the rider's job screen
-P20 TODO
+P20 DONE       hardening & release — whole-product E2E regression, load gates that assert the query plan, security review (one reachable CVE found and fixed), production runbook, 47 user-doc files, six new ADRs, BUILD_COMPLETE.md
 
 ## Current phase tasks
 P02.T01 DONE  geo domain — coordinate, polygon, division/district/area
@@ -565,6 +561,24 @@ P19.T08 DONE  partner — the COD ledger; both totals are the server's, nothing 
 P19.T09 DONE  the offline queue wired into the job screen: offline is queued, refused is shown, sign-out clears it
 P19.T10 DONE  100% coverage in all four packages; APK budget recorded in frontend/apk-size-baseline.txt
 P19.T11 DONE  verify.sh green; docs/technical/merchant-app.md and partner-app.md; this file
+```
+
+## P20 tasks
+
+The last phase. Its acceptance is four things — a full E2E regression, a load
+test on discovery and dispatch, a security review, and a production runbook —
+plus §6's documentation requirements, of which `docs/user/` is the one still
+empty.
+
+```
+P20.T01  Audit what P00–P19 left; this task list                               DONE
+P20.T02  Full E2E regression: one test that walks the whole product            DONE
+P20.T03  Load test on discovery (ALG-01/02) and dispatch (ALG-04)              DONE
+P20.T04  Security review — docs/security-review.md                             DONE
+P20.T05  Production runbook — docs/runbook.md                                  DONE
+P20.T06  User documentation — docs/user/, per screen, per role                 DONE
+P20.T07  ADRs for the decisions P17–P19 made; README completeness              DONE
+P20.T08  verify.sh green, BUILD_COMPLETE.md, STATE.md, commit, push            DONE
 ```
 
 ## What P19 found

@@ -78,7 +78,7 @@ func loadSpec(t *testing.T) spec {
 // Register mounts — not a second copy maintained by hand. A new module must be
 // added here; once added, its routes are checked forever.
 func servedRoutes() []string {
-	routes := []string{"GET /healthz"}
+	routes := []string{"GET /healthz", "GET /readyz"}
 	routes = append(routes, geohttp.Patterns()...)
 	routes = append(routes, confighttp.Patterns()...)
 	routes = append(routes, identityhttp.Patterns()...)
@@ -171,6 +171,7 @@ func TestPublicOperationsAreExplicitlyMarked(t *testing.T) {
 	// entry appearing here is a decision worth noticing.
 	publicPaths := map[string]bool{
 		"/healthz":             true,
+		"/readyz":              true,
 		"/v1/geo/resolve":      true,
 		"/v1/geo/merchants":    true,
 		"/v1/geo/distance":     true,
@@ -234,7 +235,7 @@ func TestRequiredParametersAreReallyRequired(t *testing.T) {
 	checked := 0
 	for path, ops := range loadSpec(t).Paths {
 		op, ok := ops["get"]
-		if !ok || path == "/healthz" {
+		if !ok || path == "/healthz" || path == "/readyz" {
 			continue
 		}
 		for _, param := range op.Parameters {
