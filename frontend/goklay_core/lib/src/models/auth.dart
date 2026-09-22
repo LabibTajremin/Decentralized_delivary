@@ -13,12 +13,17 @@ import '../api/json.dart';
 @immutable
 class OtpChallenge {
   /// Creates a challenge.
-  const OtpChallenge({required this.expiresIn, required this.resendAfter});
+  const OtpChallenge({
+    required this.expiresIn,
+    required this.resendAfter,
+    this.demoCode,
+  });
 
   /// Reads the response.
   factory OtpChallenge.fromJson(Map<String, Object?> json) => OtpChallenge(
     expiresIn: Duration(seconds: readInt(json, 'expires_in')),
     resendAfter: Duration(seconds: readInt(json, 'resend_after')),
+    demoCode: readOptionalString(json, 'demo_code'),
   );
 
   /// How long the code is good for. The server's number, counted down here.
@@ -26,6 +31,13 @@ class OtpChallenge {
 
   /// How long before "resend" becomes available.
   final Duration resendAfter;
+
+  /// The code itself, on a demo deployment that has no SMS to send.
+  ///
+  /// Null everywhere else, and the app must never require it: this is a field
+  /// a demo server adds, not one a real server omits by mistake. The screen
+  /// shows it when it is here and behaves exactly as before when it is not.
+  final String? demoCode;
 }
 
 /// What `POST /v1/auth/otp/verify` and `POST /v1/auth/refresh` answer.

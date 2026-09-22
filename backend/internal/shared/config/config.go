@@ -96,6 +96,16 @@ type Config struct {
 
 	// ShutdownGap is how long to let in-flight requests finish on SIGTERM.
 	ShutdownGap time.Duration
+
+	// DemoMode turns a deployment into a public demonstration: one-time codes
+	// are shown on the screen that asked for them instead of being sent, and
+	// the manual gateway's payment can be completed from the app.
+	//
+	// It is refused in production twice over — here, and again by the
+	// constructors of the two adapters it selects — because a demo deployment
+	// and a real one differ by exactly the things that keep other people's
+	// accounts and money safe.
+	DemoMode bool
 }
 
 // IsProduction reports whether the strict checks apply.
@@ -245,6 +255,7 @@ func Load(lookup Lookup) (Config, error) {
 		CORSAllowedOrigins:     l.CSV("CORS_ALLOWED_ORIGINS"),
 		LogLevel:               l.String("LOG_LEVEL", "info"),
 		ShutdownGap:            l.Duration("SHUTDOWN_TIMEOUT", 10*time.Second),
+		DemoMode:               l.Bool("DEMO_MODE", false),
 		TrackingStreamInterval: l.Duration("TRACKING_STREAM_INTERVAL", 3*time.Second),
 	}
 
@@ -261,6 +272,12 @@ func Load(lookup Lookup) (Config, error) {
 		}
 		if strings.HasPrefix(cfg.PublicBaseURL, "http://") {
 			l.errs = append(l.errs, "PUBLIC_BASE_URL must use https in production")
+		}
+		// Checked before the adapters get a chance to refuse, so the error an
+		// operator reads names the variable they set rather than the internal
+		// name of a sender they have never heard of.
+		if cfg.DemoMode {
+			l.errs = append(l.errs, "DEMO_MODE must not be set in production")
 		}
 		cfg.PaymentWebhookSecret = l.Required("PAYMENT_WEBHOOK_SECRET")
 		if cfg.PaymentWebhookSecret == devWebhookSecret {

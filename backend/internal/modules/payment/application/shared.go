@@ -9,6 +9,14 @@ import (
 	"github.com/rootlogic-lab/delivery/backend/internal/shared/errs"
 )
 
+// ManualGateway is the name the stand-in gateway tags its payments with.
+//
+// Named here rather than imported from infrastructure/gateway/manual, which
+// this layer may not import. Two places need it and both are about refusing
+// or allowing something a real gateway must never permit, so it is worth a
+// constant rather than a literal repeated twice.
+const ManualGateway = "manual"
+
 // paymentError turns a domain rule about a gateway payment into a failure a
 // caller can act on.
 //

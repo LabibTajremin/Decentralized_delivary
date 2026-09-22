@@ -102,6 +102,10 @@ type checkoutResponse struct {
 	StatusLabel string        `json:"status_label"`
 	Amount      moneyResponse `json:"amount"`
 	RedirectURL string        `json:"redirect_url"`
+	// DemoCompletion is how a client learns whether it may complete this
+	// payment itself. True only where the gateway is the stand-in and the
+	// route that does it is mounted.
+	DemoCompletion bool `json:"demo_completion"`
 }
 
 type paymentResponse struct {
@@ -284,6 +288,13 @@ func TestTheDevCompletionRouteOnlyExistsInDevTools(t *testing.T) {
 	if status := call(t, withDev, http.MethodPost, "/v1/payments/checkout", `{"order_id":"ord_1"}`, nil, &checkout); status != http.StatusOK {
 		t.Fatalf("checkout: status = %d", status)
 	}
+	// The flag the customer app reads. It is what tells a client the route
+	// below is there to call, so the two must agree: true here, false on the
+	// handler that does not mount it.
+	if !checkout.DemoCompletion {
+		t.Error("a devTools checkout against the manual gateway did not offer demo completion")
+	}
+
 	completeBody := `{"payment_id":"` + checkout.PaymentID + `","succeeded":true}`
 	if status := call(t, withDev, http.MethodPost, "/v1/payments/manual/complete", completeBody, nil, nil); status != http.StatusNoContent {
 		t.Fatalf("status = %d", status)
@@ -293,11 +304,27 @@ func TestTheDevCompletionRouteOnlyExistsInDevTools(t *testing.T) {
 	if status := call(t, withoutDev, http.MethodPost, "/v1/payments/manual/complete", completeBody, nil, nil); status != http.StatusNotFound {
 		t.Fatalf("the dev route answered %d outside devTools, want 404", status)
 	}
+
+	// And the same checkout, read from the handler that does not mount it,
+	// must not advertise it. A client that believed this flag would call a
+	// route that is not there.
+	var plain checkoutResponse
+	if status := call(t, withoutDev, http.MethodPost, "/v1/payments/checkout", `{"order_id":"ord_1"}`, nil, &plain); status != http.StatusOK {
+		t.Fatalf("checkout without devTools: status = %d", status)
+	}
+	if plain.DemoCompletion {
+		t.Error("a deployment that does not mount the completion route still offered it")
+	}
 }
 
 func TestEveryRouteRefusesAnAnonymousCaller(t *testing.T) {
 	r := newRig()
-	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "", false)
+	// devTools on, so every pattern this module publishes is really mounted.
+	// The completion route's absence without them is asserted separately, in
+	// TestTheDevCompletionRouteOnlyExistsInDevTools; here the question is whether a
+	// mounted route lets an anonymous caller through, and a route that is not
+	// mounted would answer that question with a 404 that means nothing.
+	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "", true)
 	for _, pattern := range paymenthttp.Patterns() {
 		if pattern == "POST /v1/payments/manual/webhook" {
 			continue // authenticated by signature, not by a caller
@@ -455,7 +482,12 @@ func TestNewHandlerRefusesToRunWithoutItsGuards(t *testing.T) {
 
 func TestPatternsMatchWhatIsMounted(t *testing.T) {
 	patterns := paymenthttp.Patterns()
-	if len(patterns) != 8 {
+	// Nine: seven guarded routes, the gateway's webhook, and the manual
+	// gateway's completion route. The last is published even though only a
+	// non-production deployment mounts it — the customer app calls it when a
+	// demo says it may, and an endpoint a shipped client calls belongs in the
+	// contract.
+	if len(patterns) != 9 {
 		t.Fatalf("Patterns() = %v", patterns)
 	}
 	sorted := append([]string(nil), patterns...)
@@ -467,7 +499,7 @@ func TestPatternsMatchWhatIsMounted(t *testing.T) {
 	}
 
 	r := newRig()
-	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", false)
+	mux := server(r.checkout, r.webhook, r.collections, r.refunds, r.reads, "usr_1", true)
 	for _, pattern := range patterns {
 		method, path, ok := strings.Cut(pattern, " ")
 		if !ok {

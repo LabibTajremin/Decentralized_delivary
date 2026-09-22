@@ -30,13 +30,21 @@ type CheckoutView struct {
 	// RedirectURL is empty on a resumed checkout whose attempt never recorded
 	// one, which a screen treats the same as "keep waiting".
 	RedirectURL string
+	// DemoCompletion says this payment is against the manual stand-in
+	// gateway, which never moves money, so a caller may complete it itself
+	// rather than waiting for a bank that does not exist.
+	//
+	// It says only what the *gateway* is. Whether the route that completes it
+	// is actually mounted is the transport layer's knowledge, and the two are
+	// combined there.
+	DemoCompletion bool
 }
 
 func (uc *CheckoutUseCase) viewOf(p domain.Payment, lang string) CheckoutView {
 	return CheckoutView{
 		PaymentID: p.ID, OrderID: p.OrderID,
 		Status: string(p.Status), StatusLabel: statusLabel(p.Status, lang),
-		Amount: moneyView(p.Amount),
+		Amount: moneyView(p.Amount), DemoCompletion: p.Gateway == ManualGateway,
 	}
 }
 
@@ -45,6 +53,7 @@ func checkoutViewOf(p domain.Payment, redirectURL, lang string) CheckoutView {
 		PaymentID: p.ID, OrderID: p.OrderID,
 		Status: string(p.Status), StatusLabel: statusLabel(p.Status, lang),
 		Amount: moneyView(p.Amount), RedirectURL: redirectURL,
+		DemoCompletion: p.Gateway == ManualGateway,
 	}
 }
 

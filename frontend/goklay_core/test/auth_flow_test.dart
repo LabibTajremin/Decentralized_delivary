@@ -171,6 +171,94 @@ void main() {
       expect(session.accessToken, 'access-1');
     });
 
+    testWidgets('a demo challenge shows the code and fills the field', (
+      WidgetTester tester,
+    ) async {
+      backend.routes['POST /v1/auth/otp/verify'] = (_) => tokenPairJson();
+      build(signedIn: false);
+      await pumpWidgetUnderTest(
+        tester,
+        OtpScreen(
+          auth: auth,
+          session: session,
+          role: AuthResult.customerRole,
+          phone: '01712345678',
+          challenge: const OtpChallenge(
+            expiresIn: Duration(seconds: 300),
+            resendAfter: Duration(seconds: 2),
+            demoCode: '482913',
+          ),
+          onVerified: (_) {},
+          onFailed: (_) {},
+        ),
+      );
+
+      // Shown, with a line saying why there is a code on screen at all.
+      expect(find.text(bn.demoCodeLabel), findsOneWidget);
+      expect(find.text('482913'), findsWidgets);
+
+      // And filled in, so the button is live without retyping what the
+      // screen has just displayed.
+      expect(
+        tester
+            .widget<GoklayButton>(
+              find.widgetWithText(GoklayButton, bn.verifyCode),
+            )
+            .isEnabled,
+        isTrue,
+      );
+    });
+
+    testWidgets('an ordinary challenge shows no code and fills nothing', (
+      WidgetTester tester,
+    ) async {
+      build(signedIn: false);
+      await pumpOtp(tester);
+      expect(find.text(bn.demoCodeLabel), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+    });
+
+    testWidgets('asking again replaces the demo code with the new one', (
+      WidgetTester tester,
+    ) async {
+      // The old code stops working the moment a new one is issued, so a
+      // screen that went on showing it would be telling the visitor to type
+      // something that is now wrong.
+      backend.routes['POST /v1/auth/otp/request'] = (_) => <String, Object?>{
+        'expires_in': 300,
+        'resend_after': 2,
+        'demo_code': '111111',
+      };
+      build(signedIn: false);
+      await pumpWidgetUnderTest(
+        tester,
+        OtpScreen(
+          auth: auth,
+          session: session,
+          role: AuthResult.customerRole,
+          phone: '01712345678',
+          challenge: const OtpChallenge(
+            expiresIn: Duration(seconds: 300),
+            resendAfter: Duration(seconds: 2),
+            demoCode: '482913',
+          ),
+          onVerified: (_) {},
+          onFailed: (_) {},
+        ),
+      );
+      expect(find.text('482913'), findsWidgets);
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.tap(find.bySemanticsLabel(bn.resendCode));
+      await tester.pumpAndSettle();
+
+      expect(find.text('111111'), findsWidgets);
+      expect(find.text('482913'), findsNothing);
+    });
+
     testWidgets('a refused code reports the failure upward', (
       WidgetTester tester,
     ) async {

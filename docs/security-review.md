@@ -152,6 +152,50 @@ test 3 above proves. The exposure is CPU, not data, and it belongs behind the
 edge rate limit the runbook asks for rather than behind an application
 limiter that a legitimate gateway's retry storm would also trip.
 
+### Demo mode weakens exactly one thing, and cannot exist in production
+
+Added after this review, so reviewed as part of it. `DEMO_MODE=true` makes a
+public demonstration possible by doing two things: the one-time code comes
+back in the response to the request that asked for it, and a payment against
+the manual gateway can be completed by the customer who owns it.
+
+The first is a deliberate weakening of authentication — on a demo, the phone
+number stops being a credential, and anyone can sign in as anyone. That is
+what a demo of this product requires: a visitor types a number they do not
+own, so no SMS can reach them.
+
+What matters is that it is fenced and that it weakens nothing else:
+
+* **Three independent refusals.** `config.Load` rejects `DEMO_MODE` in
+  production; `sms.DemoSender`'s constructor rejects a production flag; and
+  `migrate seed` refuses to create the demo accounts against a production
+  database. Each is tested, including that the two senders' refusals carry
+  different errors so an operator can tell which they configured.
+* **The decision belongs to the sender, not to a flag.** `RequestOTPUseCase`
+  asks whether its sender implements `ports.CodeRevealer`, which only
+  `DemoSender` does. A configuration mistake cannot make a sender that really
+  sends an SMS also hand the code to whoever asked — the only object that
+  knows how a code was delivered is the one that delivered it.
+* **Nothing else about the code changes.** Same entropy, same hash at rest,
+  same rate limit, same lockout, same single use, same expiry — asserted end
+  to end in `backend/tests/e2e/demo_test.go`, including that a wrong code is
+  still refused and the right one still works exactly once.
+* **The payment completion is owner-scoped.** This review's one code change to
+  the feature: `WebhookUseCase.Simulate` now checks that the payment belongs
+  to the caller, answering `404` when it does not. Before, any signed-in
+  caller could settle any payment whose id they knew — tolerable while only a
+  developer with curl could reach the route, and not once it is a button in a
+  shipped app.
+* **The completion route is now documented** rather than being an undocumented
+  endpoint a shipped client calls, and `demo_completion` on the checkout is
+  how a client learns whether it exists. In production it is neither mounted
+  nor true.
+
+The residual risk is the intended one: a demo's data is public. That is stated
+in `docs/demo.md` as a rule rather than a caveat, together with the reminder to
+set a real `JWT_SIGNING_KEY` outside production — where it otherwise defaults
+to a value printed in the source.
+
 ---
 
 ## Recommendations, in the order they are worth doing

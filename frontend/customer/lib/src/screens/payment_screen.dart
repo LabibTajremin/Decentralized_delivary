@@ -60,6 +60,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
     });
   }
 
+  /// Stands in for the bank, on a demo deployment that has none.
+  ///
+  /// Offered only when the checkout said [Checkout.demoCompletion] — the
+  /// server's answer, not the app's guess — and followed immediately by a
+  /// re-read, so what the screen shows afterwards is the payment's real
+  /// state rather than an assumption that completing worked.
+  Future<void> _completeDemo(String paymentId) async {
+    final Dependencies dependencies = AppScope.of(context);
+    await _runner.run(() async {
+      await dependencies.payments.completeDemoPayment(paymentId);
+      final ApiPage<Payment> page = await dependencies.payments.payment(
+        widget.orderId,
+      );
+      if (mounted) {
+        setState(() => _payment = page.value);
+      }
+    });
+  }
+
   Future<void> _refresh() async {
     final Dependencies dependencies = AppScope.of(context);
     await _runner.run(() async {
@@ -141,9 +160,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                   ),
                 const SizedBox(height: GoklaySpacing.lg),
+                if (checkout.demoCompletion && !(payment?.isCaptured ?? false))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: GoklaySpacing.md),
+                    child: GoklayButton(
+                      label: strings.completeDemoPayment,
+                      expand: true,
+                      onPressed: _runner.isBusy
+                          ? null
+                          : () => _completeDemo(checkout.paymentId),
+                    ),
+                  ),
                 GoklayButton(
                   label: strings.checkPayment,
                   expand: true,
+                  variant: checkout.demoCompletion
+                      ? GoklayButtonVariant.outlined
+                      : GoklayButtonVariant.filled,
                   onPressed: _runner.isBusy ? null : _refresh,
                 ),
               ],

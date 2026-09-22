@@ -376,3 +376,54 @@ func TestLoaderURLWithNoValueAndNoDefault(t *testing.T) {
 		t.Errorf("an absent optional URL must not be an error, got %v", err)
 	}
 }
+
+// TestProductionRejectsDemoMode is the outermost of the three fences around
+// demo mode. The other two are the constructors of the adapters it selects,
+// which refuse production on their own; this one exists so that the failure an
+// operator reads names the variable they set rather than the internal name of
+// a sender they have never heard of.
+func TestProductionRejectsDemoMode(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"DATABASE_URL":           "postgres://x",
+		"REDIS_URL":              "redis://y",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"PAYMENT_WEBHOOK_SECRET": strings.Repeat("w", 40),
+		"DEMO_MODE":              "true",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "DEMO_MODE must not be set in production") {
+		t.Errorf("error = %v, want demo mode rejected in production", err)
+	}
+}
+
+// Outside production it loads, and it is off unless asked for. A demo is a
+// deliberate choice, not something a missing variable turns on.
+func TestDemoModeIsOffUnlessAskedFor(t *testing.T) {
+	base := map[string]string{
+		"DATABASE_URL": "postgres://x",
+		"REDIS_URL":    "redis://y",
+	}
+	cfg, err := config.Load(config.FromMap(base))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DemoMode {
+		t.Error("DemoMode is on with nothing set")
+	}
+
+	withDemo := map[string]string{"DEMO_MODE": "true"}
+	for k, v := range base {
+		withDemo[k] = v
+	}
+	cfg, err = config.Load(config.FromMap(withDemo))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.DemoMode {
+		t.Error("DEMO_MODE=true did not turn demo mode on")
+	}
+	if cfg.IsProduction() {
+		t.Error("a demo deployment reports itself as production")
+	}
+}

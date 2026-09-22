@@ -1102,3 +1102,51 @@ func TestSignInFailsRatherThanIssueAWeakRefreshToken(t *testing.T) {
 		t.Errorf("error = %v, want token_generation_failed", err)
 	}
 }
+
+// TestARequestRevealsItsCodeOnlyToADemoSender is the whole of demo mode on
+// this side: the code comes back in the response when the sender says its
+// codes may be shown, and not otherwise.
+//
+// It matters that this is asked of the *sender* rather than of a flag. A flag
+// could be set by a deployment whose sender really sends an SMS, and the code
+// would then be handed to whoever asked for it as well as to the number's
+// owner.
+func TestARequestRevealsItsCodeOnlyToADemoSender(t *testing.T) {
+	ctx := context.Background()
+
+	ordinary := newRig()
+	result, err := ordinary.request.Execute(ctx, "01712345678", noPlacement)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.DemoCode != "" {
+		t.Errorf("an ordinary sender handed the code back: %q", result.DemoCode)
+	}
+
+	demo := newRig()
+	revealing := &revealingSMS{}
+	demo.request = application.NewRequestOTPUseCase(
+		demo.otps, demo.limiter, revealing, demo.cfg,
+		fixedClock{at: signInAt}, &countingReader{}, quietLogger())
+
+	demoResult, err := demo.request.Execute(ctx, "01712345678", noPlacement)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if demoResult.DemoCode == "" {
+		t.Fatal("a demo sender revealed nothing, so nobody can sign in to the demo")
+	}
+	// The code revealed is the code that was issued — not a second one, and
+	// not a placeholder. The sender saw the same string.
+	if len(revealing.codes) != 1 || revealing.codes[0] != demoResult.DemoCode {
+		t.Errorf("revealed %q, sent %v", demoResult.DemoCode, revealing.codes)
+	}
+	// And it is a real code: verifying with it works, which is what proves
+	// nothing about the stored hash changed.
+	if _, err := demo.verify.Execute(ctx, application.VerifyRequest{
+		Phone: "01712345678", Code: demoResult.DemoCode,
+		Role: domain.RoleCustomer, Device: "demo", Placement: noPlacement,
+	}); err != nil {
+		t.Fatalf("the revealed code did not verify: %v", err)
+	}
+}

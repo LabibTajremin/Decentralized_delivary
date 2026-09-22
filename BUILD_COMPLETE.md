@@ -92,6 +92,8 @@ second with its own ADR — and an **empty** frontend one.
   up.
 * `docs/security-review.md`, `docs/runbook.md`, `docs/load-test.md` — P20's
   three prose deliverables.
+* `docs/demo.md` — deploying it as a public demonstration, the demo accounts,
+  and a walkthrough of a whole delivery.
 
 ---
 
@@ -114,6 +116,13 @@ mark an order paid.
 
 Both seams exist and are the only thing that has to change. `docs/runbook.md`
 §0 treats them as blockers rather than footnotes.
+
+**A demonstration is possible without either**, and is supported rather than
+improvised: `DEMO_MODE=true` shows one-time codes to whoever asks for one,
+because a visitor has no handset an SMS could reach, and lets the app settle a
+manual-gateway payment itself. The seed provides seven accounts across the
+three apps, each already owning what their app is about. It refuses to exist
+in production three separate ways. **`docs/demo.md`**.
 
 ### Three platform capabilities, honestly absent
 

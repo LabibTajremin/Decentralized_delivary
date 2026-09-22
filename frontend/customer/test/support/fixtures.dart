@@ -319,13 +319,22 @@ Map<String, Object?> cancellationJson({bool allowed = true}) =>
     };
 
 /// A `Checkout`.
-Map<String, Object?> checkoutJson({String redirect = ''}) => <String, Object?>{
+///
+/// [demoCompletion] is the flag a demo deployment sets, and it is left off
+/// entirely by default rather than sent as `false` — that is what a real
+/// server does, and a client that only ever saw the field present would not
+/// be proven to cope without it.
+Map<String, Object?> checkoutJson({
+  String redirect = '',
+  bool demoCompletion = false,
+}) => <String, Object?>{
   'payment_id': 'pay-1',
   'order_id': 'ord-1',
   'status': 'pending',
   'status_label': 'অপেক্ষমাণ',
   'amount': money(38000, '৳ ৩৮০'),
   if (redirect.isNotEmpty) 'redirect_url': redirect,
+  if (demoCompletion) 'demo_completion': true,
 };
 
 /// A `Payment`.

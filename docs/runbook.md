@@ -32,6 +32,15 @@ correct behaviour — a gateway that always succeeds is a customer who paid
 nothing for an order marked paid — but it is a release blocker and not a
 footnote.
 
+**A demonstration is possible in the meantime**, and is a supported
+configuration rather than a workaround: `DEMO_MODE=true` shows one-time codes
+to whoever asks for one and lets the app settle a manual-gateway payment
+itself, and the seed provides seven accounts across the three apps.
+**`docs/demo.md`** is the whole of it. It cannot be set in production — the
+process refuses to start — and a demo is a deployment where anyone can sign in
+as anyone, so nothing belongs in its database that would matter if it were
+public.
+
 ---
 
 ## 1. What the system is made of
@@ -74,6 +83,7 @@ Required in production, enforced at startup:
 | Variable | Rule |
 |---|---|
 | `APP_ENV=production` | turns on every check below |
+| `DEMO_MODE` | must be unset or false; `true` refuses to start (`docs/demo.md`) |
 | `JWT_SIGNING_KEY` | ≥32 chars, not the development default. `openssl rand -base64 48` |
 | `PAYMENT_WEBHOOK_SECRET` | ≥32 chars, not the development default, different per environment |
 | `PUBLIC_BASE_URL` | must be `https://…` |
@@ -432,4 +442,6 @@ Then, against staging with real geometry loaded:
 * a Postgres restore tested;
 * TLS, HSTS and edge rate limiting confirmed at the proxy;
 * `docs/security-review.md` §4 read, and its four recommendations either done
-  or explicitly deferred by someone whose decision that is.
+  or explicitly deferred by someone whose decision that is;
+* `DEMO_MODE` unset. It cannot be true in production, but confirming it is
+  absent is cheaper than reading a startup failure.

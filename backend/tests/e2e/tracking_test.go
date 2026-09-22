@@ -48,6 +48,26 @@ type trackingFrame struct {
 // frame and ends the connection).
 func streamFrames(t *testing.T, base, orderID, bearer string, n int) []trackingFrame {
 	t.Helper()
+	return streamFramesThen(t, base, orderID, bearer, n, nil)
+}
+
+// streamFramesThen is streamFrames with a hook that fires once the first frame
+// has actually been read.
+//
+// It exists because the interesting assertion about this stream is that it
+// notices a change *mid-connection*, and proving that means changing the order
+// while the stream is open. Sleeping for a while and hoping the stream got
+// there first is how that test was written, and it is a test that fails on a
+// loaded machine for reasons that have nothing to do with the product: if the
+// change lands before the first frame, the stream opens on an order that is
+// already terminal, sends one frame and closes.
+//
+// The hook removes the clock from it. The caller is told when the stream is
+// demonstrably reading, and only then makes its change.
+func streamFramesThen(
+	t *testing.T, base, orderID, bearer string, n int, afterFirst func(),
+) []trackingFrame {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, base+"/v1/track/"+orderID+"?lang=en", nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -79,6 +99,12 @@ func streamFrames(t *testing.T, base, orderID, bearer string, n int) []trackingF
 			t.Fatalf("decode frame %q: %v", line, err)
 		}
 		out = append(out, frame)
+		if len(out) == 1 && afterFirst != nil {
+			// In a goroutine: the hook's whole purpose is to happen while
+			// this loop is still reading, and calling it inline would stop
+			// the reading it is meant to race.
+			go afterFirst()
+		}
 	}
 	return out
 }
@@ -114,17 +140,22 @@ func TestACustomerWatchesTheirDeliveryLive(t *testing.T) {
 	// The delivery finishes concurrently with the stream reading it, so the
 	// test proves the stream notices a change mid-connection rather than
 	// only ever seeing a snapshot taken before it opened.
+	//
+	// It is triggered by the stream's first frame rather than by a timer.
+	// With a timer this raced: on a loaded machine the delivery could land
+	// before the stream had read anything, the stream would then open on an
+	// order that was already terminal, and the test would fail having proven
+	// nothing about the product.
 	done := make(chan struct{})
-	go func() {
-		time.Sleep(500 * time.Millisecond)
+	deliver := func() {
+		defer close(done)
 		if status := requestAs(t, http.MethodPost, base+"/v1/partner/jobs/"+job.ID+"/deliver", "",
 			rider.AccessToken, nil); status != http.StatusOK {
 			t.Errorf("deliver: status = %d", status)
 		}
-		close(done)
-	}()
+	}
 
-	frames := streamFrames(t, base, orderID, customer.AccessToken, 2)
+	frames := streamFramesThen(t, base, orderID, customer.AccessToken, 2, deliver)
 	<-done
 
 	if len(frames) < 2 {

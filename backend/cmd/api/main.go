@@ -37,6 +37,7 @@ import (
 	geopg "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/infrastructure/persistence/postgres"
 	geohttp "github.com/rootlogic-lab/delivery/backend/internal/modules/geo/transport/http"
 	identityapp "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/application"
+	identityports "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/application/ports"
 	identitydomain "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/domain"
 	identitypg "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/infrastructure/persistence/postgres"
 	identityredis "github.com/rootlogic-lab/delivery/backend/internal/modules/identity/infrastructure/redis"
@@ -204,10 +205,12 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 	if err != nil {
 		return nil, err
 	}
-	smsSender, err := identitysms.NewLogSender(logger, cfg.IsProduction())
+	// Which sender depends on what this deployment is for. Both refuse to be
+	// constructed in production, so neither branch can be taken there — a
+	// production deployment with no real gateway does not start, rather than
+	// accepting sign-ins and putting every code somewhere it should not be.
+	smsSender, err := newSMSSender(cfg, logger)
 	if err != nil {
-		// A production deployment with no SMS gateway configured must not
-		// start: it would accept sign-ins and write every code to the log.
 		return nil, err
 	}
 	authenticator := identityhttp.NewAuthenticator(signer)
@@ -512,6 +515,20 @@ func buildRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, red
 		httpx.SecurityHeaders(),
 		httpx.CORS(cfg.CORSAllowedOrigins),
 	), nil
+}
+
+// newSMSSender picks the one-time-code sender this deployment gets.
+//
+// DemoSender reveals the code to whoever asked for it, which is the only way a
+// published demonstration can have a sign-in screen anybody can get past.
+// LogSender writes it to the log, which is how a developer signs in locally.
+// Neither may exist in production, and cfg rejects DEMO_MODE there as well, so
+// the wrong one cannot be selected by an environment variable alone.
+func newSMSSender(cfg config.Config, logger *slog.Logger) (identityports.SMSSender, error) {
+	if cfg.DemoMode {
+		return identitysms.NewDemoSender(logger, cfg.IsProduction())
+	}
+	return identitysms.NewLogSender(logger, cfg.IsProduction())
 }
 
 func logLevel(name string) slog.Level {

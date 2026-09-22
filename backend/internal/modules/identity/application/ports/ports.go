@@ -112,6 +112,23 @@ type SMSSender interface {
 	SendOTP(ctx context.Context, phone domain.Phone, code string) error
 }
 
+// CodeRevealer is an SMSSender whose codes may be shown to whoever asked for
+// one, instead of being kept secret because they were delivered out of band.
+//
+// It exists so that "may this code be displayed?" is answered by the object
+// that knows how codes are delivered, rather than by a flag threaded down from
+// configuration. A sender that really sends an SMS must never implement it;
+// the only implementation is sms.DemoSender, which refuses to be constructed
+// in production.
+type CodeRevealer interface {
+	SMSSender
+
+	// RevealsCode is a marker. It takes and returns nothing on purpose: the
+	// use case already holds the code at the moment it decides, and a sender
+	// that handed one back would be a sender keeping a credential.
+	RevealsCode()
+}
+
 // UserDirectory maps a phone number to an account, creating one on first
 // sign-in.
 //

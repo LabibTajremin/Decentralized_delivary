@@ -241,7 +241,7 @@ func TestSimulateAppliesLikeARealWebhook(t *testing.T) {
 	ctx := context.Background()
 	r, paymentID := startedCheckout(t, 50000)
 
-	if err := r.webhook.Simulate(ctx, paymentID, true, ""); err != nil {
+	if err := r.webhook.Simulate(ctx, paymentID, "usr_1", true, ""); err != nil {
 		t.Fatalf("Simulate: %v", err)
 	}
 	if r.repo.payments[paymentID].Status != domain.StatusCaptured {
@@ -256,7 +256,7 @@ func TestSimulateFailing(t *testing.T) {
 	ctx := context.Background()
 	r, paymentID := startedCheckout(t, 50000)
 
-	if err := r.webhook.Simulate(ctx, paymentID, false, "declined by demo"); err != nil {
+	if err := r.webhook.Simulate(ctx, paymentID, "usr_1", false, "declined by demo"); err != nil {
 		t.Fatalf("Simulate: %v", err)
 	}
 	if r.repo.payments[paymentID].Status != domain.StatusFailed {
@@ -271,7 +271,7 @@ func TestSimulateRefusesAnyGatewayButManual(t *testing.T) {
 	r, paymentID := startedCheckout(t, 50000)
 	r.gateway.name = "sslcommerz"
 
-	if err := r.webhook.Simulate(ctx, paymentID, true, ""); errs.CodeOf(err) != "dev_only" {
+	if err := r.webhook.Simulate(ctx, paymentID, "usr_1", true, ""); errs.CodeOf(err) != "dev_only" {
 		t.Fatalf("err = %v", err)
 	}
 	if r.repo.payments[paymentID].Status != domain.StatusPending {
@@ -282,7 +282,23 @@ func TestSimulateRefusesAnyGatewayButManual(t *testing.T) {
 func TestSimulateOnAMissingPayment(t *testing.T) {
 	ctx := context.Background()
 	r := newRig()
-	if err := r.webhook.Simulate(ctx, "PAY-MISSING", true, ""); errs.CodeOf(err) != "payment_not_found" {
+	if err := r.webhook.Simulate(ctx, "PAY-MISSING", "usr_1", true, ""); errs.CodeOf(err) != "payment_not_found" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A demo lets a customer settle their own payment. It does not let them settle
+// somebody else's, and the refusal is a not-found rather than a forbidden —
+// the same answer an id that never existed gets, so a list of ids cannot be
+// used to discover which ones are real.
+func TestSimulateRefusesAnotherCustomersPayment(t *testing.T) {
+	ctx := context.Background()
+	r, paymentID := startedCheckout(t, 50000)
+
+	if err := r.webhook.Simulate(ctx, paymentID, "usr_2", true, ""); errs.CodeOf(err) != "payment_not_found" {
+		t.Fatalf("err = %v", err)
+	}
+	if r.repo.payments[paymentID].Status != domain.StatusPending {
+		t.Fatalf("a stranger moved the payment: %+v", r.repo.payments[paymentID])
 	}
 }

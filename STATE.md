@@ -1,5 +1,5 @@
 # BUILD STATE
-last_updated: 2026-09-22T00:00:00Z
+last_updated: 2026-09-22T12:00:00Z
 current_phase: P20
 current_task: none — the build is complete
 current_branch: claude/goklay-design-system-9z500x
@@ -71,6 +71,46 @@ flutter config --no-analytics
 3.47.5 is the version CI is pinned to (`.github/workflows/ci.yml`) and the one
 `frontend/goklay_core/pubspec.yaml` constrains against.
 
+## After P20 — demo mode (done)
+
+The user asked whether the product could be published as a demo without an SMS
+provider and without a payment gateway. It can, and now is:
+
+* **`DEMO_MODE=true`** selects `sms.DemoSender`, which delivers nothing and
+  lets the code come back in the challenge response as `demo_code`. The OTP
+  screen in all three apps shows it and fills the field. Whether a code may be
+  shown is asked of the *sender* — `ports.CodeRevealer`, which only the demo
+  sender implements — rather than of a flag, so a misconfiguration cannot make
+  a sender that really sends an SMS reveal one too.
+* **Seven seeded accounts** (`seed/0009_demo_accounts.sql`): two customers with
+  saved addresses in different areas, two merchant owners already owning
+  seeded approved shops (a restaurant and a grocery, so both catalogue shapes
+  are one sign-in away), two riders positioned but off shift, and an admin.
+  The two demo-owned shops are set to 00:00–24:00; the other twelve keep
+  realistic hours.
+* **`demo_completion`** on the checkout lets the customer app settle a
+  manual-gateway payment itself, so the prepaid path does not dead-end. The
+  completion route is now documented and in `Patterns()`, because a shipped
+  client calls it.
+* **Three independent refusals in production**, each tested: the config, the
+  sender's constructor, and `migrate seed`.
+
+Two things found along the way and fixed:
+
+* `WebhookUseCase.Simulate` let **any** signed-in caller settle **any**
+  payment whose id they knew. Fine while only a developer with curl could
+  reach it; not once it is a button in an app. It now checks ownership and
+  answers 404 otherwise.
+* `TestACustomerWatchesTheirDeliveryLive` raced on a 500ms sleep and failed
+  once under full-suite load. It now triggers the delivery from the stream's
+  first frame, so the assertion no longer depends on the wall clock.
+
+One thing an operator must know, and `docs/demo.md` says it: a demo is a
+deployment where **anyone can sign in as anyone**, because the code is handed
+to whoever asks. And `auth.otp_requests_per_hour` defaults to 5 per number per
+hour, which is a few minutes of traffic when everybody shares seven numbers —
+raise it to 20 through the ordinary admin config surface.
+
 ## Nothing is left, in build terms
 
 Every phase is `DONE` in the table below. The gates are green. What remains is
@@ -79,7 +119,7 @@ not development:
 | Outstanding | Whose |
 |---|---|
 | Merging the branch | the user's, by standing instruction |
-| An SMS provider adapter | needed before production; the binary refuses to start without one |
+| An SMS provider adapter | needed before production; the binary refuses to start without one. A **demo** needs neither — see `docs/demo.md` |
 | A payment gateway adapter | the same; only cash-on-delivery works until then |
 | The dispatch heartbeat, scheduled externally | an operator's, `docs/runbook.md` §6 |
 | Four security recommendations | `docs/security-review.md` §4, none a live vulnerability |

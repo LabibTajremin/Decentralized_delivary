@@ -302,6 +302,62 @@ void main() {
       dependencies.dispose();
     });
 
+    testWidgets('an ordinary deployment offers no way to complete a payment', (
+      WidgetTester tester,
+    ) async {
+      route('POST /v1/payments/checkout', (_) => checkoutJson());
+      final Dependencies dependencies = await pumpPayment(tester);
+      expect(find.bySemanticsLabel(bn.completeDemoPayment), findsNothing);
+      dependencies.dispose();
+    });
+
+    testWidgets('a demo deployment completes the payment from the screen', (
+      WidgetTester tester,
+    ) async {
+      route('POST /v1/payments/checkout',
+          (_) => checkoutJson(demoCompletion: true));
+      route('POST /v1/payments/manual/complete', (_) => <String, Object?>{});
+      route('GET /v1/payments/ord-1', (_) => paymentJson());
+
+      final Dependencies dependencies = await pumpPayment(tester);
+      expect(find.bySemanticsLabel(bn.completeDemoPayment), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel(bn.completeDemoPayment));
+      await tester.pumpAndSettle();
+
+      // The payment id came from the checkout, not from anywhere the screen
+      // invented.
+      final Map<String, Object?> sent =
+          backend.to('/v1/payments/manual/complete').single.body!
+              as Map<String, Object?>;
+      expect(sent['payment_id'], 'pay-1');
+      expect(sent['succeeded'], isTrue);
+
+      // And the screen shows what the server says afterwards, rather than
+      // assuming the completion worked.
+      expect(find.text('পেমেন্ট হয়েছে'), findsOneWidget);
+      // Once it is captured there is nothing left to complete.
+      expect(find.bySemanticsLabel(bn.completeDemoPayment), findsNothing);
+      dependencies.dispose();
+    });
+
+    testWidgets('a demo completion that fails is reported, not swallowed', (
+      WidgetTester tester,
+    ) async {
+      route('POST /v1/payments/checkout',
+          (_) => checkoutJson(demoCompletion: true));
+      route('POST /v1/payments/manual/complete',
+          (_) => errorBody('payments_unavailable', 'পেমেন্ট পড়া যায়নি।'));
+      backend.statuses['POST /v1/payments/manual/complete'] = 503;
+
+      final Dependencies dependencies = await pumpPayment(tester);
+      await tester.tap(find.bySemanticsLabel(bn.completeDemoPayment));
+      await tester.pumpAndSettle();
+
+      expect(find.text('পেমেন্ট পড়া যায়নি।'), findsOneWidget);
+      dependencies.dispose();
+    });
+
     testWidgets('re-reading shows the payment the server now has', (
       WidgetTester tester,
     ) async {

@@ -13,6 +13,7 @@ class Checkout {
     required this.statusLabel,
     required this.amount,
     required this.redirectUrl,
+    required this.demoCompletion,
   });
 
   /// Reads the `Checkout` response.
@@ -23,6 +24,7 @@ class Checkout {
     statusLabel: readString(json, 'status_label'),
     amount: Money.fromJson(readObject(json, 'amount')),
     redirectUrl: readString(json, 'redirect_url'),
+    demoCompletion: readBool(json, 'demo_completion'),
   );
 
   /// The payment attempt's id.
@@ -44,6 +46,13 @@ class Checkout {
   /// attempt never recorded one, which is why the screen checks rather than
   /// launching an empty URL.
   final String redirectUrl;
+
+  /// Whether this deployment lets the app complete the payment itself.
+  ///
+  /// True only on a demo, where the gateway is the stand-in that never moves
+  /// money and the route that completes it is mounted. The app does not work
+  /// this out — the server says so, and says so nowhere but a demo.
+  final bool demoCompletion;
 
   /// Whether there is somewhere to send them.
   bool get hasRedirect => redirectUrl.isNotEmpty;

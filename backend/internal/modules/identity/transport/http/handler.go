@@ -112,6 +112,10 @@ type requestOTPResponse struct {
 	// down with them rather than holding its own idea of the TTL (2.9).
 	ExpiresIn   int64 `json:"expires_in"`
 	ResendAfter int64 `json:"resend_after"`
+	// DemoCode is present only in a demo deployment, where there is no SMS to
+	// receive. `omitempty` rather than a second response shape: a client that
+	// never sees the field behaves exactly as it does today.
+	DemoCode string `json:"demo_code,omitempty"`
 }
 
 // POST /v1/auth/otp/request
@@ -130,6 +134,7 @@ func (h *Handler) requestOTPHandler(w http.ResponseWriter, r *http.Request) {
 		Phone:       result.MaskedPhone,
 		ExpiresIn:   result.ExpiresIn,
 		ResendAfter: result.ResendAfter,
+		DemoCode:    result.DemoCode,
 	})
 }
 

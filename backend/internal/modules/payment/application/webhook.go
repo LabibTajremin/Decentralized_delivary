@@ -47,18 +47,31 @@ func (uc *WebhookUseCase) Handle(ctx context.Context, payload []byte, signature 
 // manual gateway's stand-in for "the bank confirmed", used by the dev-only
 // completion route and nowhere else.
 //
-// Restricted to the manual gateway by name, not only by which routes a
-// deployment mounts: a route omitted from production wiring is one omission
-// away from a way to mark any order paid for free, and this is the one
-// use case in the whole module where that is worth checking twice.
-func (uc *WebhookUseCase) Simulate(ctx context.Context, paymentID string, succeeded bool, reason string) error {
-	if uc.gateway.Name() != "manual" {
+// Restricted three ways, each of which would be enough on its own and none of
+// which is trusted to be:
+//
+//   - to the manual gateway, by name. A route omitted from production wiring
+//     is one omission away from a way to mark any order paid for free.
+//   - to a deployment that mounts the route at all, which production does not.
+//   - to the customer whose payment it is. That is the one added here when the
+//     customer app began calling this route on a demo: before, any signed-in
+//     caller could settle any payment they knew the id of, which was
+//     tolerable while only a developer with curl could reach it and is not
+//     once it is a button in a shipped app.
+//
+// An id belonging to somebody else answers not-found, the same as an id that
+// never existed — the same choice the rest of this API makes.
+func (uc *WebhookUseCase) Simulate(ctx context.Context, paymentID, customerID string, succeeded bool, reason string) error {
+	if uc.gateway.Name() != ManualGateway {
 		return errs.New(errs.KindForbidden, "dev_only",
 			"This action is only available with the manual gateway.")
 	}
 	payment, err := uc.repo.Payment(ctx, paymentID)
 	if err != nil {
 		return notFoundOr(err)
+	}
+	if payment.CustomerID != customerID {
+		return notFound()
 	}
 	return uc.apply(ctx, ports.WebhookEvent{
 		Reference: payment.Reference, GatewayRef: payment.Reference,

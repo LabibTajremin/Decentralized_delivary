@@ -68,6 +68,11 @@ class _OtpScreenState extends State<OtpScreen> {
   Timer? _ticker;
   late int _secondsLeft;
 
+  /// The code the server handed back, on a demo deployment. Held in state
+  /// rather than read from the widget because asking for another one replaces
+  /// it, and the screen must not go on showing the code that just expired.
+  String? _demoCode;
+
   /// The length P04 fixes the code at, and what the field accepts.
   static const int codeLength = 6;
 
@@ -76,6 +81,7 @@ class _OtpScreenState extends State<OtpScreen> {
     super.initState();
     _code.addListener(_onTyped);
     _startCountdown(widget.challenge.resendAfter);
+    _adoptDemoCode(widget.challenge);
   }
 
   @override
@@ -89,6 +95,21 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   void _onTyped() => setState(() {});
+
+  /// Shows the code, and fills the field with it, when the server sent one.
+  ///
+  /// Filling it as well as showing it is the point of a demo: a visitor is
+  /// here to see the product, not to retype six digits they were just told.
+  /// The field stays editable, so the screen still demonstrates what a real
+  /// sign-in does rather than skipping it.
+  void _adoptDemoCode(OtpChallenge challenge) {
+    final String? code = challenge.demoCode;
+    if (code == null || code.isEmpty) {
+      return;
+    }
+    _demoCode = code;
+    _code.text = code;
+  }
 
   void _startCountdown(Duration from) {
     _ticker?.cancel();
@@ -131,12 +152,42 @@ class _OtpScreenState extends State<OtpScreen> {
         widget.phone,
       );
       if (mounted) {
-        setState(() => _startCountdown(challenge.resendAfter));
+        setState(() {
+          _startCountdown(challenge.resendAfter);
+          _adoptDemoCode(challenge);
+        });
       }
     });
     if (!ok && mounted) {
       setState(() {});
     }
+  }
+
+  /// The demo notice: why there is a code on screen, and what it is.
+  Widget _demoBanner(GoklayStrings strings, String code) {
+    return Padding(
+      padding: const EdgeInsets.only(top: GoklaySpacing.md),
+      child: Container(
+        padding: const EdgeInsets.all(GoklaySpacing.md),
+        decoration: BoxDecoration(
+          color: GoklayColors.brandSubtle,
+          borderRadius: BorderRadius.all(GoklayRadii.card),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              strings.demoCodeLabel,
+              style: GoklayTextStyles.caption.copyWith(
+                color: GoklayColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: GoklaySpacing.xxs),
+            Text(code, style: GoklayTextStyles.emphasis),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -155,6 +206,7 @@ class _OtpScreenState extends State<OtpScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Text(strings.otpSubtitle, style: GoklayTextStyles.body),
+                if (_demoCode != null) _demoBanner(strings, _demoCode!),
                 const SizedBox(height: GoklaySpacing.lg),
                 LabelledField(
                   label: strings.otpTitle,

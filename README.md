@@ -31,6 +31,13 @@ curl localhost:8080/healthz            # {"status":"ok"}  — liveness
 curl localhost:8080/readyz             # {"status":"ready"} — both stores reachable
 ```
 
+To sign in and actually use it, run the migrations and the seed, and set
+`DEMO_MODE=true` so one-time codes come back in the response instead of going
+to an SMS gateway that does not exist yet. That also gives you seven seeded
+accounts — two customers, two shop owners, two riders and an admin — each
+already owning what their app is about. **`docs/demo.md`** has the numbers and
+a walkthrough of a whole delivery.
+
 One command runs every gate CI runs, in CI's order, and starts Postgres and
 Redis for you:
 
@@ -190,6 +197,7 @@ wiring and vendored code may be excluded, each with a justification in
 - `docs/technical/` — one file per source file: responsibility, inputs, rules, failure modes
 - `docs/user/` — one file per screen, per role
 - `docs/decisions/` — why things are the way they are
+- `docs/demo.md` — running it as a public demonstration, and the demo accounts
 - `docs/design-gaps.md` — where the design and the backend do not line up, and why
 - `docs/security-review.md` — what was checked, what was fixed, what is accepted
 - `docs/runbook.md` — running it in production: config, probes, incidents, the one thing you must schedule

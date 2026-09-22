@@ -217,6 +217,10 @@ abstract class CustomerStrings {
   /// Shown when a checkout came back without anywhere to send the customer.
   String get noPaymentPage;
 
+  /// The button that completes a payment on a demo deployment, where there is
+  /// no bank to confirm one. Shown only when the server says so.
+  String get completeDemoPayment;
+
   // ---- account ----------------------------------------------------------
 
   /// Heading of the account screen.
@@ -524,6 +528,9 @@ class CustomerStringsBn implements CustomerStrings {
   String get noPaymentPage => 'পেমেন্ট পেজ পাওয়া যায়নি।';
 
   @override
+  String get completeDemoPayment => 'ডেমো পেমেন্ট সম্পন্ন করুন';
+
+  @override
   String get accountTitle => 'অ্যাকাউন্ট';
   @override
   String get personalInfo => 'ব্যক্তিগত তথ্য';
@@ -769,6 +776,9 @@ class CustomerStringsEn implements CustomerStrings {
   String get checkPayment => 'Check payment status';
   @override
   String get noPaymentPage => 'No payment page was returned.';
+
+  @override
+  String get completeDemoPayment => 'Complete the demo payment';
 
   @override
   String get accountTitle => 'Account';

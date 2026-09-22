@@ -76,6 +76,9 @@ void main() {
         (bn.verificationFailedBody, en.verificationFailedBody),
         (bn.startOver, en.startOver),
         (bn.getStarted, en.getStarted),
+        // P20's demo mode added one: the line that explains why a one-time
+        // code is on screen instead of in an SMS.
+        (bn.demoCodeLabel, en.demoCodeLabel),
       ];
 
       // `phoneHint` is deliberately not in the pair list: it is a number
@@ -124,6 +127,7 @@ void main() {
         bn.verificationFailedBody,
         bn.startOver,
         bn.getStarted,
+        bn.demoCodeLabel,
       ]) {
         expect(
           value.runes.any((int r) => r >= 0x0980 && r <= 0x09FF),

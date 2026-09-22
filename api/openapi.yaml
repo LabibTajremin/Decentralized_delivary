@@ -517,6 +517,19 @@ paths:
                     description: Masked, so the screen can confirm the number without showing it.
                   expires_in:   { type: integer, format: int64, example: 300 }
                   resend_after: { type: integer, format: int64, example: 720 }
+                  demo_code:
+                    type: string
+                    example: "482913"
+                    description: |
+                      The code itself, present **only** in a demo deployment
+                      (`DEMO_MODE=true`, which cannot be set in production).
+
+                      A demo has no phone that will ring, so the code is
+                      handed back for the screen to display. Every other
+                      protection still applies: it is generated with the same
+                      entropy, stored only as a hash, rate limited, locked out
+                      after too many wrong attempts, and expires. A client
+                      shows it when it is present and must not require it.
         "400":
           description: Not a valid Bangladeshi mobile number
           content:
@@ -3686,6 +3699,66 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /v1/payments/manual/complete:
+    post:
+      tags: [payments]
+      summary: Complete a manual-gateway payment without a bank
+      description: |
+        **Not mounted in production.** The manual gateway never moves money,
+        so outside production this stands in for the moment a bank would
+        confirm: it builds the same event a signed callback carries and feeds
+        it through the same path, so the idempotency and the state machine are
+        exercised for real.
+
+        A client learns whether this route exists from `demo_completion` on
+        the checkout it is completing. It must not call it otherwise — in
+        production the route is absent and the call 404s.
+
+        `WebhookUseCase.Simulate` checks the gateway's name again before doing
+        anything, so leaving this mounted by mistake still cannot mark an
+        order paid against a real gateway. It also checks that the payment is
+        the caller's own: a payment id belonging to somebody else answers
+        `404`, the same as one that never existed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_id, succeeded]
+              properties:
+                payment_id: { type: string }
+                succeeded:  { type: boolean }
+                reason:     { type: string, description: Required when succeeded is false }
+      responses:
+        "204":
+          description: Applied
+        "400":
+          description: The request is malformed, or a failure carries no reason
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: The configured gateway is not the manual stand-in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such payment, or it is not the caller's
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Payments could not be reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /v1/partner/cod:
     get:
       tags: [payments]
@@ -4221,6 +4294,17 @@ components:
         redirect_url:
           type: string
           description: Where the customer's app sends them to pay. Empty on a resumed checkout whose attempt never recorded one.
+        demo_completion:
+          type: boolean
+          description: |
+            True only where the gateway is the manual stand-in *and* the
+            deployment mounts `POST /v1/payments/manual/complete` — that is,
+            outside production. It tells a client it may complete this payment
+            itself rather than waiting for a bank that does not exist, which
+            is what lets a demo show the prepaid flow end to end.
+
+            Absent or false everywhere else. A client must treat it as false
+            when it is missing.
 
     Payment:
       type: object

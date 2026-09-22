@@ -102,6 +102,11 @@ abstract class GoklayStrings {
   /// The button that leaves a success screen for the app proper.
   String get getStarted;
 
+  /// Shown above the code on a demo deployment, which has no SMS to send.
+  /// The number beside it is the server's; this is only the label that
+  /// explains why it is on screen at all.
+  String get demoCodeLabel;
+
   /// The language tag this table is written in.
   String get languageTag;
 }
@@ -194,6 +199,9 @@ class GoklayStringsBn implements GoklayStrings {
   String get getStarted => 'শুরু করুন';
 
   @override
+  String get demoCodeLabel => 'ডেমো — কোনো এসএমএস পাঠানো হয়নি। আপনার কোড:';
+
+  @override
   String get languageTag => 'bn';
 }
 
@@ -282,6 +290,9 @@ class GoklayStringsEn implements GoklayStrings {
 
   @override
   String get getStarted => 'Get started';
+
+  @override
+  String get demoCodeLabel => 'Demo — no SMS was sent. Your code is:';
 
   @override
   String get languageTag => 'en';

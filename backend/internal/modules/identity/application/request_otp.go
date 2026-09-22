@@ -55,6 +55,15 @@ type RequestOTPResult struct {
 	ExpiresIn int64
 	// ResendAfter is how long before another code may be requested.
 	ResendAfter int64
+
+	// DemoCode is the code itself, and is empty in every deployment that
+	// sends one.
+	//
+	// It is filled only when the configured sender implements
+	// [ports.CodeRevealer] — that is, only in a demo deployment, which cannot
+	// be a production one. A visitor to a demo has no phone that will ring,
+	// so the alternative is a sign-in screen nobody can get past.
+	DemoCode string
 }
 
 // Execute issues and sends a code.
@@ -124,9 +133,17 @@ func (uc *RequestOTPUseCase) Execute(ctx context.Context, rawPhone string, place
 
 	uc.logger.Info("otp issued", "phone", phone.Masked(), "expires_in", settings.otpTTL.Seconds())
 
+	// Asked of the sender rather than of a flag: the only thing that knows
+	// whether a code was really delivered somewhere is whatever delivered it.
+	var demoCode string
+	if _, revealed := uc.sms.(ports.CodeRevealer); revealed {
+		demoCode = code.String()
+	}
+
 	return RequestOTPResult{
 		MaskedPhone: phone.Masked(),
 		ExpiresIn:   int64(settings.otpTTL.Seconds()),
+		DemoCode:    demoCode,
 		// max guards against a divide by zero. Config bounds already forbid a
 		// limit of zero, but a crash in the sign-in path is not a risk worth
 		// leaving to another package's validation.

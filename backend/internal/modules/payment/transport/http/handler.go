@@ -103,13 +103,23 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("POST /v1/payments/manual/webhook", h.receiveWebhook)
 	if h.devTools {
-		mux.Handle("POST /v1/payments/manual/complete", h.authed(http.HandlerFunc(h.simulate)))
+		mux.Handle(completeRoute, h.authed(http.HandlerFunc(h.simulate)))
 	}
 }
 
+// completeRoute is the manual gateway's completion route.
+//
+// It used to be left out of Patterns() on the grounds that it was not part of
+// the published API. That stopped being true when the customer app started
+// calling it: a demo deployment tells the app it may complete a payment, and
+// an endpoint a shipped client calls is part of the contract whether or not
+// every deployment mounts it. It is documented, with a description saying it
+// exists only outside production, and `demo_completion` on the checkout is
+// how a client learns whether it is there.
+const completeRoute = "POST /v1/payments/manual/complete"
+
 // Patterns returns every route this module documents in the API contract,
-// sorted. The manual gateway's dev-only completion route is deliberately
-// absent — it is not part of the API this module publishes.
+// sorted.
 func Patterns() []string {
 	empty := &Handler{}
 	out := make([]string, 0, 16)
@@ -119,7 +129,7 @@ func Patterns() []string {
 	for pattern := range empty.adminRoutes() {
 		out = append(out, pattern)
 	}
-	out = append(out, "POST /v1/payments/manual/webhook")
+	out = append(out, "POST /v1/payments/manual/webhook", completeRoute)
 	sort.Strings(out)
 	return out
 }
@@ -147,13 +157,22 @@ type checkoutBody struct {
 	StatusLabel string    `json:"status_label"`
 	Amount      moneyBody `json:"amount"`
 	RedirectURL string    `json:"redirect_url,omitempty"`
+	// DemoCompletion tells a client it may complete this payment itself,
+	// which is true only where the gateway is the stand-in *and* the route
+	// that does it is mounted. Neither is ever so in production.
+	DemoCompletion bool `json:"demo_completion,omitempty"`
 }
 
-func toCheckoutBody(v application.CheckoutView) checkoutBody {
+// toCheckoutBody takes devTools rather than reading a package variable,
+// because the two halves of "may a client complete this?" are known in two
+// different layers: whether the gateway is the stand-in is the use case's
+// answer, and whether the route exists is this one's.
+func toCheckoutBody(v application.CheckoutView, devTools bool) checkoutBody {
 	return checkoutBody{
 		PaymentID: v.PaymentID, OrderID: v.OrderID,
 		Status: v.Status, StatusLabel: v.StatusLabel,
 		Amount: toMoneyBody(v.Amount), RedirectURL: v.RedirectURL,
+		DemoCompletion: v.DemoCompletion && devTools,
 	}
 }
 
@@ -236,7 +255,7 @@ func (h *Handler) startCheckout(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, toCheckoutBody(view))
+	httpx.WriteJSON(w, http.StatusOK, toCheckoutBody(view, h.devTools))
 }
 
 func (h *Handler) myPayment(w http.ResponseWriter, r *http.Request) {
@@ -333,12 +352,16 @@ func (h *Handler) receiveWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
+	customerID, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
 	var body simulateRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	if err := h.webhook.Simulate(r.Context(), body.PaymentID, body.Succeeded, body.Reason); err != nil {
+	if err := h.webhook.Simulate(r.Context(), body.PaymentID, customerID, body.Succeeded, body.Reason); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}

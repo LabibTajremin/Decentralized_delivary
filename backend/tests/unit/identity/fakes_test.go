@@ -448,3 +448,12 @@ func (c *countingReader) Read(p []byte) (int, error) {
 func quietLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
+
+// revealingSMS is a fakeSMS that also satisfies ports.CodeRevealer, standing
+// in for the demo sender. Its whole purpose is the marker method: it is what
+// makes RequestOTPUseCase.Execute hand the code back.
+type revealingSMS struct {
+	fakeSMS
+}
+
+func (r *revealingSMS) RevealsCode() {}

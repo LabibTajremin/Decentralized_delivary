@@ -23,6 +23,20 @@ class PaymentApi {
     return Checkout.fromJson(response.asObject);
   }
 
+  /// Completes a demo payment, standing in for the bank.
+  ///
+  /// Only ever called when the checkout said [Checkout.demoCompletion], and
+  /// the route it uses is mounted only outside production. On a real
+  /// deployment the flag is false, this is never called, and the endpoint is
+  /// not there to call.
+  Future<void> completeDemoPayment(String paymentId) async {
+    await _client.send(
+      'POST',
+      '/v1/payments/manual/complete',
+      body: <String, Object?>{'payment_id': paymentId, 'succeeded': true},
+    );
+  }
+
   /// The payment's current state.
   Future<ApiPage<Payment>> payment(String orderId) async {
     final ApiResponse response = await _client.get('/v1/payments/$orderId');
