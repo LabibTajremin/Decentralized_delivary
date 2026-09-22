@@ -1,0 +1,35 @@
+# The GoKlay customer app: find a shop, fill a cart, place an order, watch it
+# arrive.
+#
+# It renders and nothing else. Every price, every label, every "you may cancel
+# for another 4 minutes" arrives already decided from the backend (2.9), and
+# scripts/thin-client-lint.sh fails the build if a rule appears here.
+name: goklay_customer
+description: GoKlay customer app.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # The foundation: tokens, theme, the accessibility floor, localisation and
+  # the API transport. Everything shared with the merchant and partner apps
+  # lives there rather than being reinvented here.
+  goklay_core:
+    path: ../goklay_core
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

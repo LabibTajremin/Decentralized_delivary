@@ -1,0 +1,125 @@
+# A whole GoKlay deployment on one machine.
+#
+#   cp .env.example .env && edit it
+#   docker compose up -d
+#
+# Five services: Postgres with PostGIS, Redis, the API, Caddy for TLS, and the
+# dispatch heartbeat without which orders reach "ready" and stop moving.
+#
+# docs/deployment.md is the guide. The repository root's docker-compose.yml is
+# a different thing — it is for developing, and exposes its database on a port
+# with a weak password. This one does not.
+
+name: goklay
+
+services:
+  postgres:
+    # PostGIS is not optional: ALG-01 needs ST_DWithin over a GiST index and
+    # ALG-03 needs ST_Contains (ADR 0003). A plain Postgres fails on the first
+    # migration.
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-goklay}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # No ports. Nothing outside this compose project needs to reach the
+    # database, and a Postgres on a public IP is found by scanners in minutes.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-goklay}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: goklay-api:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-staging}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      API_ADDR: ":8080"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-goklay}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-goklay}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?set PAYMENT_WEBHOOK_SECRET in .env}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRACKING_STREAM_INTERVAL: ${TRACKING_STREAM_INTERVAL:-3s}
+    # Also no ports: Caddy reaches it over the compose network and is the only
+    # thing the internet talks to.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # No healthcheck. The image is distroless: no shell, no curl, no wget, and
+    # the binary takes no health flag — so there is nothing inside the
+    # container that could run one. Docker would need a probe it does not
+    # have, and a healthcheck that always fails is worse than none.
+    #
+    # Health is checked from outside instead, which is where it matters:
+    #   curl -fsS https://<your domain>/readyz
+    # and docs/deployment.md wires that into an uptime check.
+
+  caddy:
+    # TLS, automatically, from Let's Encrypt. It is also where HSTS and the
+    # edge rate limit belong (docs/security-review.md §4.4).
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      GOKLAY_DOMAIN: ${GOKLAY_DOMAIN:?set GOKLAY_DOMAIN in .env}
+      TLS_EMAIL: ${TLS_EMAIL:?set TLS_EMAIL in .env}
+    depends_on:
+      - api
+
+  sweep:
+    # The dispatch heartbeat. There is no background worker inside the API, so
+    # without this every order reaches "ready" and waits for a rider who is
+    # never offered it — and it looks like a bug in the product rather than a
+    # missing cron. docs/runbook.md §6.
+    image: alpine:3
+    restart: unless-stopped
+    volumes:
+      - ./sweep.sh:/sweep.sh:ro
+      - sweep-state:/state
+    environment:
+      GOKLAY_API: http://api:8080
+      SWEEP_INTERVAL: ${SWEEP_INTERVAL:-12}
+      ADMIN_PHONE: ${ADMIN_PHONE:?set ADMIN_PHONE in .env}
+      STATE_DIR: /state
+    entrypoint: ["/bin/sh", "/sweep.sh"]
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
+  sweep-state:

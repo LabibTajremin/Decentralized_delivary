@@ -1,0 +1,42 @@
+# TLS, HSTS and a rate limit at the edge — the three jobs the API deliberately
+# does not do (docs/runbook.md §3).
+#
+# Caddy gets a certificate from Let's Encrypt on first start and renews it
+# forever. Point your domain's A record at this machine before bringing it up;
+# the certificate request fails if the name does not resolve here yet.
+
+{
+	email {$TLS_EMAIL}
+}
+
+{$GOKLAY_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# The API sets nosniff, DENY and no-referrer itself. HSTS belongs
+		# here, with whoever owns the certificate.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# The live tracking stream is server-sent events: one long-lived response
+	# per watching customer. Buffering it would hold every frame until the
+	# delivery finished, which is the one thing that screen must not do.
+	#
+	# `handle` rather than two bare reverse_proxy lines, so the precedence is
+	# stated rather than inferred from the order they happen to be written in.
+	handle /v1/track/* {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy api:8080
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

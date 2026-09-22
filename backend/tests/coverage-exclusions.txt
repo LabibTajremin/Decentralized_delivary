@@ -4,3 +4,4 @@
 # Any new entry requires an ADR in docs/decisions/.
 
 github.com/rootlogic-lab/delivery/backend/cmd/api  # main wiring only, no business rules; covered by tests/e2e
+github.com/rootlogic-lab/delivery/backend/cmd/migrate  # argument parsing and DB connection only; every decision lives in internal/platform/migrate, which is at 100%. See docs/decisions/0006-migration-tooling.md

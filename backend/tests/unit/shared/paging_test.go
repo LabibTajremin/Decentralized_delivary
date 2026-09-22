@@ -76,9 +76,9 @@ func TestDecodeEmptyCursorStartsAtZero(t *testing.T) {
 func TestDecodeCursorRejectsGarbage(t *testing.T) {
 	cases := map[string]string{
 		"not base64":     "!!!!",
-		"wrong prefix":   "eDo0MA",           // "x:40"
-		"offset not int": "bzphYmM",          // "o:abc"
-		"negative":       "bzotMQ",           // "o:-1"
+		"wrong prefix":   "eDo0MA",  // "x:40"
+		"offset not int": "bzphYmM", // "o:abc"
+		"negative":       "bzotMQ",  // "o:-1"
 	}
 	for name, input := range cases {
 		if _, err := paging.DecodeCursor(input); !errors.Is(err, paging.ErrInvalidCursor) {

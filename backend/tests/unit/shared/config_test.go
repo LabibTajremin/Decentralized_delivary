@@ -28,25 +28,34 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.ShutdownGap != 10*time.Second {
 		t.Errorf("ShutdownGap = %v, want 10s", cfg.ShutdownGap)
 	}
+	if cfg.TrackingStreamInterval != 3*time.Second {
+		t.Errorf("TrackingStreamInterval = %v, want 3s", cfg.TrackingStreamInterval)
+	}
 }
 
 func TestLoadReadsOverrides(t *testing.T) {
+	// Staging, not production: the production path has its own strict checks
+	// covered by TestProductionRequiresRealSecrets and friends.
 	cfg, err := config.Load(config.FromMap(map[string]string{
-		"APP_ENV":          "production",
-		"API_ADDR":         ":9000",
-		"DATABASE_URL":     "postgres://db",
-		"REDIS_URL":        "redis://cache",
-		"LOG_LEVEL":        "warn",
-		"SHUTDOWN_TIMEOUT": "45s",
+		"APP_ENV":                  "staging",
+		"API_ADDR":                 ":9000",
+		"DATABASE_URL":             "postgres://db",
+		"REDIS_URL":                "redis://cache",
+		"LOG_LEVEL":                "warn",
+		"SHUTDOWN_TIMEOUT":         "45s",
+		"TRACKING_STREAM_INTERVAL": "500ms",
 	}))
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
 	}
-	if cfg.Env != "production" || cfg.APIAddr != ":9000" || cfg.LogLevel != "warn" {
+	if cfg.Env != "staging" || cfg.APIAddr != ":9000" || cfg.LogLevel != "warn" {
 		t.Errorf("overrides not applied: %+v", cfg)
 	}
 	if cfg.ShutdownGap != 45*time.Second {
 		t.Errorf("ShutdownGap = %v, want 45s", cfg.ShutdownGap)
+	}
+	if cfg.TrackingStreamInterval != 500*time.Millisecond {
+		t.Errorf("TrackingStreamInterval = %v, want 500ms", cfg.TrackingStreamInterval)
 	}
 }
 
@@ -166,5 +175,255 @@ func TestNewLoaderNilLookupReadsRealEnvironment(t *testing.T) {
 	l := config.NewLoader(nil)
 	if got := l.String("P01_PROBE", "fallback"); got != "present" {
 		t.Errorf("String = %q, want the value from the real environment", got)
+	}
+}
+
+func TestLoadDeploymentDefaults(t *testing.T) {
+	cfg, err := config.Load(config.FromMap(map[string]string{
+		"DATABASE_URL": "postgres://x",
+		"REDIS_URL":    "redis://y",
+	}))
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.PublicBaseURL != "http://localhost:8080" {
+		t.Errorf("PublicBaseURL = %q, want the local default", cfg.PublicBaseURL)
+	}
+	if cfg.JWTIssuer != "goklay" {
+		t.Errorf("JWTIssuer = %q, want goklay", cfg.JWTIssuer)
+	}
+	if cfg.JWTSigningKey == "" {
+		t.Error("development must get a signing key so the stack runs with no secrets")
+	}
+	if cfg.PaymentWebhookSecret == "" {
+		t.Error("development must get a webhook secret so the stack runs with no secrets")
+	}
+	if cfg.CORSAllowedOrigins != nil {
+		t.Errorf("CORSAllowedOrigins = %v, want nil for a mobile-only deployment", cfg.CORSAllowedOrigins)
+	}
+	if cfg.IsProduction() {
+		t.Error("default env must not be production")
+	}
+}
+
+func TestLoadTrimsTrailingSlashFromBaseURL(t *testing.T) {
+	cfg, err := config.Load(config.FromMap(map[string]string{
+		"DATABASE_URL":    "postgres://x",
+		"REDIS_URL":       "redis://y",
+		"PUBLIC_BASE_URL": "https://api.goklay.com/",
+	}))
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.PublicBaseURL != "https://api.goklay.com" {
+		t.Errorf("PublicBaseURL = %q, want the trailing slash trimmed", cfg.PublicBaseURL)
+	}
+}
+
+func TestLoadRejectsBadBaseURL(t *testing.T) {
+	for _, bad := range []string{"not-a-url", "ftp://api.goklay.com", "/relative/path"} {
+		_, err := config.Load(config.FromMap(map[string]string{
+			"DATABASE_URL":    "postgres://x",
+			"REDIS_URL":       "redis://y",
+			"PUBLIC_BASE_URL": bad,
+		}))
+		if err == nil || !strings.Contains(err.Error(), "PUBLIC_BASE_URL must be an absolute http(s) URL") {
+			t.Errorf("PUBLIC_BASE_URL=%q: error = %v, want a rejection", bad, err)
+		}
+	}
+}
+
+func TestLoadParsesCORSOrigins(t *testing.T) {
+	cfg, err := config.Load(config.FromMap(map[string]string{
+		"DATABASE_URL":         "postgres://x",
+		"REDIS_URL":            "redis://y",
+		"CORS_ALLOWED_ORIGINS": "https://admin.goklay.com, https://ops.goklay.com ,",
+	}))
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	want := []string{"https://admin.goklay.com", "https://ops.goklay.com"}
+	if len(cfg.CORSAllowedOrigins) != len(want) {
+		t.Fatalf("origins = %v, want %v", cfg.CORSAllowedOrigins, want)
+	}
+	for i := range want {
+		if cfg.CORSAllowedOrigins[i] != want[i] {
+			t.Errorf("origin[%d] = %q, want %q", i, cfg.CORSAllowedOrigins[i], want[i])
+		}
+	}
+}
+
+func TestCSVOfOnlySeparatorsIsNil(t *testing.T) {
+	l := config.NewLoader(config.FromMap(map[string]string{"K": " , , "}))
+	if got := l.CSV("K"); got != nil {
+		t.Errorf("CSV = %v, want nil when every entry is blank", got)
+	}
+}
+
+// TestProductionRequiresRealSecrets is the deployment guard: a production
+// process must not start with development defaults.
+func TestProductionRequiresRealSecrets(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":      "production",
+		"DATABASE_URL": "postgres://x",
+		"REDIS_URL":    "redis://y",
+	}))
+	if err == nil {
+		t.Fatal("production must not start without a signing key")
+	}
+	if !strings.Contains(err.Error(), "JWT_SIGNING_KEY is required") {
+		t.Errorf("error = %v, want a missing signing key", err)
+	}
+	if !strings.Contains(err.Error(), "PAYMENT_WEBHOOK_SECRET is required") {
+		t.Errorf("error = %v, want a missing webhook secret", err)
+	}
+	if !strings.Contains(err.Error(), "PUBLIC_BASE_URL must use https in production") {
+		t.Errorf("error = %v, want the http base URL rejected in production", err)
+	}
+}
+
+// TestProductionRejectsTheDevelopmentWebhookSecret mirrors the signing-key
+// guard: a webhook secret an attacker can read out of this repository is a
+// secret that signs nothing.
+func TestProductionRejectsTheDevelopmentWebhookSecret(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"DATABASE_URL":           "postgres://x",
+		"REDIS_URL":              "redis://y",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"PAYMENT_WEBHOOK_SECRET": "insecure-development-webhook-secret-do-not-use",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "PAYMENT_WEBHOOK_SECRET must not be the development key") {
+		t.Errorf("error = %v, want the development webhook secret rejected", err)
+	}
+}
+
+func TestProductionRejectsAShortWebhookSecret(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"DATABASE_URL":           "postgres://x",
+		"REDIS_URL":              "redis://y",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"PAYMENT_WEBHOOK_SECRET": "tooshort",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "PAYMENT_WEBHOOK_SECRET") || !strings.Contains(err.Error(), "at least 32 characters") {
+		t.Errorf("error = %v, want a short webhook secret rejected", err)
+	}
+}
+
+func TestProductionRejectsTheDevelopmentKey(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":         "production",
+		"DATABASE_URL":    "postgres://x",
+		"REDIS_URL":       "redis://y",
+		"PUBLIC_BASE_URL": "https://api.goklay.com",
+		"JWT_SIGNING_KEY": "insecure-development-signing-key-do-not-use",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "must not be the development key") {
+		t.Errorf("error = %v, want the development key rejected", err)
+	}
+}
+
+func TestProductionRejectsShortKey(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":         "production",
+		"DATABASE_URL":    "postgres://x",
+		"REDIS_URL":       "redis://y",
+		"PUBLIC_BASE_URL": "https://api.goklay.com",
+		"JWT_SIGNING_KEY": "tooshort",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "at least 32 characters") {
+		t.Errorf("error = %v, want a short key rejected", err)
+	}
+}
+
+func TestProductionAcceptsAProperDeployment(t *testing.T) {
+	cfg, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"API_ADDR":               ":8080",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"DATABASE_URL":           "postgres://user:pass@db:5432/delivery",
+		"REDIS_URL":              "redis://cache:6379/0",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"JWT_ISSUER":             "goklay-prod",
+		"PAYMENT_WEBHOOK_SECRET": strings.Repeat("w", 40),
+		"CORS_ALLOWED_ORIGINS":   "https://admin.goklay.com",
+		"LOG_LEVEL":              "warn",
+		"SHUTDOWN_TIMEOUT":       "30s",
+	}))
+	if err != nil {
+		t.Fatalf("a complete production config must load: %v", err)
+	}
+	if !cfg.IsProduction() {
+		t.Error("IsProduction() = false, want true")
+	}
+	if cfg.JWTIssuer != "goklay-prod" || cfg.PublicBaseURL != "https://api.goklay.com" {
+		t.Errorf("config = %+v", cfg)
+	}
+	if cfg.PaymentWebhookSecret != strings.Repeat("w", 40) {
+		t.Errorf("PaymentWebhookSecret = %q", cfg.PaymentWebhookSecret)
+	}
+}
+
+func TestLoaderURLWithNoValueAndNoDefault(t *testing.T) {
+	l := config.NewLoader(config.FromMap(map[string]string{}))
+	if got := l.URL("MISSING", ""); got != "" {
+		t.Errorf("URL = %q, want empty when neither a value nor a default is set", got)
+	}
+	if err := l.Err(); err != nil {
+		t.Errorf("an absent optional URL must not be an error, got %v", err)
+	}
+}
+
+// TestProductionRejectsDemoMode is the outermost of the three fences around
+// demo mode. The other two are the constructors of the adapters it selects,
+// which refuse production on their own; this one exists so that the failure an
+// operator reads names the variable they set rather than the internal name of
+// a sender they have never heard of.
+func TestProductionRejectsDemoMode(t *testing.T) {
+	_, err := config.Load(config.FromMap(map[string]string{
+		"APP_ENV":                "production",
+		"DATABASE_URL":           "postgres://x",
+		"REDIS_URL":              "redis://y",
+		"PUBLIC_BASE_URL":        "https://api.goklay.com",
+		"JWT_SIGNING_KEY":        strings.Repeat("k", 48),
+		"PAYMENT_WEBHOOK_SECRET": strings.Repeat("w", 40),
+		"DEMO_MODE":              "true",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "DEMO_MODE must not be set in production") {
+		t.Errorf("error = %v, want demo mode rejected in production", err)
+	}
+}
+
+// Outside production it loads, and it is off unless asked for. A demo is a
+// deliberate choice, not something a missing variable turns on.
+func TestDemoModeIsOffUnlessAskedFor(t *testing.T) {
+	base := map[string]string{
+		"DATABASE_URL": "postgres://x",
+		"REDIS_URL":    "redis://y",
+	}
+	cfg, err := config.Load(config.FromMap(base))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DemoMode {
+		t.Error("DemoMode is on with nothing set")
+	}
+
+	withDemo := map[string]string{"DEMO_MODE": "true"}
+	for k, v := range base {
+		withDemo[k] = v
+	}
+	cfg, err = config.Load(config.FromMap(withDemo))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.DemoMode {
+		t.Error("DEMO_MODE=true did not turn demo mode on")
+	}
+	if cfg.IsProduction() {
+		t.Error("a demo deployment reports itself as production")
 	}
 }

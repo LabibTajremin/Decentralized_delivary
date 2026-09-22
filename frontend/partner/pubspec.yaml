@@ -1,0 +1,36 @@
+# The GoKlay partner app: the rider's app. Go on shift, take a job, collect
+# it, deliver it, and settle the cash.
+#
+# It renders and nothing else. Which jobs a rider is offered, what a job pays
+# and how much cash is owed are all decided by the backend (2.9), and
+# scripts/thin-client-lint.sh fails the build if a rule appears here.
+#
+# This is the app the offline queue in goklay_core was built for: a rider taps
+# "collected" and "delivered" in places with no signal, and those taps can
+# neither be lost nor replayed out of order.
+name: goklay_partner
+description: GoKlay partner app.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  goklay_core:
+    path: ../goklay_core
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

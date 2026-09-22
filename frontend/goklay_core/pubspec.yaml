@@ -1,0 +1,64 @@
+# The foundation all three GoKlay apps are built on: design tokens taken from
+# the Figma source, the theme built from them, the accessibility floor, the
+# Bengali-first localisation, and the API transport.
+#
+# It is a package, not an app: it has no android/ or ios/ directory, because
+# nothing here is installable on its own. P18 and P19 add the apps.
+name: goklay_core
+description: Design tokens, theme, accessibility floor, localisation and API transport shared by the GoKlay apps.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # The Dart team's own HTTP client. The transport needs one concrete
+  # implementation; everything above it talks to an injected abstraction, so a
+  # test never opens a socket.
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  # Taken from the Figma source NlVjn8OuvmLjbm8z8TDVlR. Manrope carries the
+  # display face and Poppins the UI text, exactly as the design uses them.
+  #
+  # Noto Sans Bengali is not in the design file, and has to be: neither Manrope
+  # nor Poppins contains a single Bengali glyph, and Bengali is this product's
+  # default language (1.4). It covers Latin as well, so a Bengali sentence with
+  # "GoKlay" or a digit in it renders in one face rather than two.
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope-Bold.ttf
+          weight: 700
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+    - family: NotoSansBengali
+      fonts:
+        - asset: assets/fonts/NotoSansBengali-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/NotoSansBengali-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansBengali-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSansBengali-Bold.ttf
+          weight: 700

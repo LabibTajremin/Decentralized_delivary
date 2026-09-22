@@ -6,7 +6,7 @@ on:
   pull_request:
 
 env:
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.25"
 
 jobs:
   backend:
@@ -61,12 +61,33 @@ jobs:
           working-directory: backend
           args: --timeout=5m
 
+      # gofmt on the test module. golangci-lint above covers backend/ only,
+      # and the test module is a separate module with its own go.mod, so
+      # without this its formatting drifts unchecked.
+      - name: gofmt (test module)
+        working-directory: backend/tests
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
       # Check 4 — layer and cross-module rules from 05-architecture.md 2.2 / 2.5.
       # -count=1 is required: these tests read files outside their own package,
       # so a cached PASS would hide a real violation.
       - name: architecture lint
         working-directory: backend/tests
         run: go test ./unit/... -run 'TestDomainImportsNothingInternal|TestApplicationImportsDomainOnly|TestTransportDoesNotImportInfrastructure|TestCrossModuleImportsGoThroughExternal' -count=1 -v
+
+      # api/openapi.yaml is what the Flutter client is generated from (P17). An
+      # undocumented route is one no client can call; a documented route nothing
+      # serves is a client method that 404s in production. Both fail here.
+      - name: OpenAPI matches the served routes
+        working-directory: backend/tests
+        run: go test ./unit/openapi/... -count=1 -v
 
       # Checks 5 and 6 — tests run from the separate module, gated at 100%.
       - name: tests and coverage gate
@@ -103,6 +124,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.detect.outputs.present == 'true'
         with:
+          # Pinned rather than tracking stable. A toolchain that upgrades
+          # itself turns "the phase was green" into "the phase was green on
+          # whatever Flutter shipped that morning", and this is the same
+          # repository that gates on 100% coverage.
+          flutter-version: 3.47.5
           channel: stable
 
       # Check 8
@@ -115,6 +141,12 @@ jobs:
       - name: thin-client lint
         run: ./scripts/thin-client-lint.sh
 
+      # Check 9a — proves check 9 by feeding it violations on purpose. Runs
+      # with or without Dart sources: a lint nobody has watched fail is not
+      # known to work, and this one guards the rule the whole product rests on.
+      - name: thin-client lint self-test
+        run: ./scripts/thin-client-lint-selftest.sh
+
       # Check 9b
       - name: APK size budget
         if: steps.detect.outputs.present == 'true'
@@ -124,6 +156,26 @@ jobs:
       - name: flutter test with coverage gate
         if: steps.detect.outputs.present == 'true'
         run: ./scripts/flutter-coverage-gate.sh
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            backend/go.mod
+            backend/tests/go.mod
+
+      # Check 12. Its own job rather than a step in `backend`, because it is
+      # the one check that needs the network: govulncheck downloads the Go
+      # vulnerability database. Keeping it out of verify.sh is what lets
+      # verify.sh run on a container with no outbound access —
+      # docs/security-review.md records the reasoning and the last result.
+      - name: govulncheck
+        run: ./scripts/vuln-scan.sh
 
   e2e:
     name: E2E

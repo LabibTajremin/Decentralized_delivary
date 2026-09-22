@@ -1,0 +1,9 @@
+# The test module is a module of its own, joined only by the workspace file at
+# the repository root — which is not in this build context. Nothing here needs
+# it, and leaving it out keeps the context small.
+tests/
+
+# Local build output and coverage profiles.
+coverage.out
+coverage.raw.out
+*.test

@@ -17,3 +17,7 @@ frontend/**/*.iml
 .vscode/
 .DS_Store
 *.log
+
+# Local environment — copy .env.example and edit
+.env
+.env.local

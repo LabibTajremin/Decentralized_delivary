@@ -1,0 +1,128 @@
+{
+  "avatars": {
+    "RDR-DEMO-0001": {
+      "image": "avatars/RDR-DEMO-0001.png",
+      "name": "Rifat Islam"
+    },
+    "RDR-DEMO-0002": {
+      "image": "avatars/RDR-DEMO-0002.png",
+      "name": "Sabbir Ahmed"
+    },
+    "USR-DEMO-0001": {
+      "image": "avatars/USR-DEMO-0001.png",
+      "name": "Ayesha Rahman"
+    },
+    "USR-DEMO-0002": {
+      "image": "avatars/USR-DEMO-0002.png",
+      "name": "Tanvir Hasan"
+    },
+    "USR-DEMO-0003": {
+      "image": "avatars/USR-DEMO-0003.png",
+      "name": "Nusrat Jahan"
+    }
+  },
+  "categories": {
+    "food": {
+      "label": "Food",
+      "tile": "categories/food.png"
+    },
+    "grocery": {
+      "label": "Grocery",
+      "tile": "categories/grocery.png"
+    },
+    "parcel": {
+      "label": "Parcel",
+      "tile": "categories/parcel.png"
+    },
+    "pharmacy": {
+      "label": "Pharmacy",
+      "tile": "categories/pharmacy.png"
+    }
+  },
+  "merchants": {
+    "MER-DEMO-0001": {
+      "category": "food",
+      "cover": "merchants/MER-DEMO-0001-cover.png",
+      "logo": "merchants/MER-DEMO-0001-logo.png",
+      "name": "Kacchi Bhai Dhanmondi"
+    },
+    "MER-DEMO-0002": {
+      "category": "food",
+      "cover": "merchants/MER-DEMO-0002-cover.png",
+      "logo": "merchants/MER-DEMO-0002-logo.png",
+      "name": "Sultan's Dine Dhanmondi"
+    },
+    "MER-DEMO-0003": {
+      "category": "food",
+      "cover": "merchants/MER-DEMO-0003-cover.png",
+      "logo": "merchants/MER-DEMO-0003-logo.png",
+      "name": "Star Kabab Gulshan"
+    },
+    "MER-DEMO-0004": {
+      "category": "food",
+      "cover": "merchants/MER-DEMO-0004-cover.png",
+      "logo": "merchants/MER-DEMO-0004-logo.png",
+      "name": "Cheez Gulshan"
+    },
+    "MER-DEMO-0005": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0005-cover.png",
+      "logo": "merchants/MER-DEMO-0005-logo.png",
+      "name": "Shwapno Mirpur"
+    },
+    "MER-DEMO-0006": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0006-cover.png",
+      "logo": "merchants/MER-DEMO-0006-logo.png",
+      "name": "Agora Mirpur"
+    },
+    "MER-DEMO-0007": {
+      "category": "pharmacy",
+      "cover": "merchants/MER-DEMO-0007-cover.png",
+      "logo": "merchants/MER-DEMO-0007-logo.png",
+      "name": "Lazz Pharma Uttara"
+    },
+    "MER-DEMO-0008": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0008-cover.png",
+      "logo": "merchants/MER-DEMO-0008-logo.png",
+      "name": "Unimart Uttara"
+    },
+    "MER-DEMO-0009": {
+      "category": "food",
+      "cover": "merchants/MER-DEMO-0009-cover.png",
+      "logo": "merchants/MER-DEMO-0009-logo.png",
+      "name": "Nanna Biryani Motijheel"
+    },
+    "MER-DEMO-0010": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0010-cover.png",
+      "logo": "merchants/MER-DEMO-0010-logo.png",
+      "name": "Meena Bazar Mohammadpur"
+    },
+    "MER-DEMO-0011": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0011-cover.png",
+      "logo": "merchants/MER-DEMO-0011-logo.png",
+      "name": "Bhai Bhai Store Agrabad"
+    },
+    "MER-DEMO-0012": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0012-cover.png",
+      "logo": "merchants/MER-DEMO-0012-logo.png",
+      "name": "Khulshi Mart"
+    },
+    "MER-DEMO-0013": {
+      "category": "food",
+      "cover": "merchants/MER-DEMO-0013-cover.png",
+      "logo": "merchants/MER-DEMO-0013-logo.png",
+      "name": "Panshi Restaurant"
+    },
+    "MER-DEMO-0014": {
+      "category": "grocery",
+      "cover": "merchants/MER-DEMO-0014-cover.png",
+      "logo": "merchants/MER-DEMO-0014-logo.png",
+      "name": "Khulna Grocers"
+    }
+  }
+}

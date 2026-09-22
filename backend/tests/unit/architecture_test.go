@@ -109,10 +109,61 @@ func internalImport(path string) (string, bool) {
 	return strings.TrimPrefix(path, backendModule+"/"), true
 }
 
-// TestDomainImportsNothingInternal enforces 2.2: domain/ imports nothing outside itself.
+// domainVisibleShared names the shared packages a domain may import (ADR 0007).
+//
+// A list *and* a purity check, because they catch different mistakes. Purity
+// alone would also admit internal/shared/errs, which imports nothing internal
+// and is still not a value object — a domain that returns transport-shaped
+// errors is exactly the coupling the layering exists to prevent. The list is the
+// judgement about what belongs in a domain; the purity check below is the
+// mechanical guarantee that it stays safe to depend on.
+var domainVisibleShared = map[string]bool{
+	"internal/shared/money":    true,
+	"internal/shared/schedule": true,
+}
+
+// sharedPurity returns, for every package under internal/shared/, whether it
+// imports nothing internal itself.
+//
+// Computed from the tree rather than kept as a list, so a shared package that
+// grows an import of application/ or infrastructure/ stops qualifying without
+// anyone remembering to update this test.
+func sharedPurity(files []goFile) map[string]bool {
+	const prefix = "internal/shared/"
+
+	pure := map[string]bool{}
+	for _, f := range files {
+		if !strings.HasPrefix(f.pkgDir, prefix) {
+			continue
+		}
+		if _, seen := pure[f.pkgDir]; !seen {
+			pure[f.pkgDir] = true
+		}
+		for _, imp := range f.imports {
+			if _, ok := internalImport(imp); ok {
+				pure[f.pkgDir] = false
+			}
+		}
+	}
+	return pure
+}
+
+// TestDomainImportsNothingInternal enforces 2.2: domain/ imports nothing outside
+// itself.
+//
+// One exception, recorded in ADR 0007: a domain may import a package under
+// internal/shared/ when that package is a pure value object — money, a weekly
+// schedule — meaning it imports nothing internal of its own. The property 2.2
+// protects is that a domain depends on nothing that depends on anything, and
+// that still holds. The purity is checked here rather than taken on trust, so
+// the moment such a package reaches into a module the build fails for every
+// domain that uses it.
 func TestDomainImportsNothingInternal(t *testing.T) {
 	root := backendRoot(t)
-	for _, f := range collectGoFiles(t, root) {
+	files := collectGoFiles(t, root)
+	pure := sharedPurity(files)
+
+	for _, f := range files {
 		mod, layer := layerOf(f.pkgDir)
 		if layer != "domain" {
 			continue
@@ -126,7 +177,37 @@ func TestDomainImportsNothingInternal(t *testing.T) {
 			if depMod == mod && depLayer == "domain" {
 				continue
 			}
+			if strings.HasPrefix(dep, "internal/shared/") {
+				switch {
+				case !domainVisibleShared[dep]:
+					t.Errorf("%s: domain may import only the shared value objects listed in "+
+						"ADR 0007, found %q", f.path, imp)
+				case !pure[dep]:
+					t.Errorf("%s: domain may import a shared package only while it is a pure "+
+						"value object, and %q now imports module code (ADR 0007)", f.path, imp)
+				}
+				continue
+			}
 			t.Errorf("%s: domain must import nothing outside itself, found %q", f.path, imp)
+		}
+	}
+}
+
+// TestSharedValueObjectsAreActuallyPure is the other half of ADR 0007: it names
+// the packages a domain currently leans on and asserts each is still pure. The
+// test above would pass if money quietly stopped being imported; this one fails
+// if money quietly stops being a value object.
+func TestSharedValueObjectsAreActuallyPure(t *testing.T) {
+	pure := sharedPurity(collectGoFiles(t, backendRoot(t)))
+
+	for pkg := range domainVisibleShared {
+		known, exists := pure[pkg]
+		if !exists {
+			t.Errorf("%s does not exist; a domain depends on it (ADR 0007)", pkg)
+			continue
+		}
+		if !known {
+			t.Errorf("%s imports module code and is no longer a value object (ADR 0007)", pkg)
 		}
 	}
 }
@@ -148,10 +229,21 @@ func TestApplicationImportsDomainOnly(t *testing.T) {
 			if strings.HasPrefix(dep, "internal/shared") {
 				continue
 			}
-			if depMod == mod && (depLayer == "domain" || depLayer == "application") {
+			// Within its own module, application may reach domain, its own
+			// contract (which it implements), and external/.
+			//
+			// external/ is the point: 2.5 requires that extracting a module
+			// into a real service changes only that one file, which is only
+			// true if the application layer calls other modules *through* it.
+			// Allowing it here does not weaken the cross-module wall —
+			// TestCrossModuleImportsGoThroughExternal still requires that
+			// external/ is the only thing reaching another module, and that it
+			// reaches only that module's contract.
+			if depMod == mod && (depLayer == "domain" || depLayer == "application" ||
+				depLayer == "contract" || depLayer == "external") {
 				continue
 			}
-			t.Errorf("%s: application may import only its own domain (and internal/shared), found %q", f.path, imp)
+			t.Errorf("%s: application may import only its own domain, contract, external and internal/shared, found %q", f.path, imp)
 		}
 	}
 }
@@ -199,6 +291,55 @@ func TestCrossModuleImportsGoThroughExternal(t *testing.T) {
 				continue
 			}
 			t.Errorf("%s: cross-module import must go through external/ to a contract package, found %q", f.path, imp)
+		}
+	}
+}
+
+// TestPaymentContractIsSelfContained enforces 2.6: payment is Go today and a
+// separate .NET service tomorrow, so its own public contract must not import
+// another module's package — every field on every DTO here is a primitive or
+// a type this package declares. That is what makes PaymentContract's shape
+// the wire contract, unchanged, on the day this module actually moves.
+func TestPaymentContractIsSelfContained(t *testing.T) {
+	root := backendRoot(t)
+	found := false
+	for _, f := range collectGoFiles(t, root) {
+		if f.pkgDir != "internal/modules/payment/contract" {
+			continue
+		}
+		found = true
+		for _, imp := range f.imports {
+			if dep, ok := internalImport(imp); ok {
+				t.Errorf("%s: payment/contract must import nothing internal beyond the standard "+
+					"library, found %q", f.path, dep)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("internal/modules/payment/contract was not found — has it moved?")
+	}
+}
+
+// TestPaymentDomainBorrowsNoOtherModulesTypes is the other half of 2.6:
+// payment's domain and application layers may reach another module only
+// through their own external/ seam, and that seam must copy what it reads
+// into types this module declares rather than aliasing the target module's
+// contract types directly — the convention every other module uses (see
+// order/external/dispatch.go), and the one payment does not get to, because a
+// type alias is still the other module's type at the wire boundary.
+func TestPaymentDomainBorrowsNoOtherModulesTypes(t *testing.T) {
+	root := backendRoot(t)
+	for _, f := range collectGoFiles(t, root) {
+		if !strings.HasPrefix(f.pkgDir, "internal/modules/payment/external/") {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(root, f.path))
+		if err != nil {
+			t.Fatalf("read %s: %v", f.path, err)
+		}
+		if strings.Contains(string(src), "= order"+"contract.") || strings.Contains(string(src), "= dispatch"+"contract.") {
+			t.Errorf("%s: a payment external/ seam type-aliases another module's contract type "+
+				"directly — copy the fields into a type this module owns instead", f.path)
 		}
 	}
 }

@@ -65,6 +65,13 @@ transport/       HTTP handlers — imports application only
 
 Compile-time enforcement: a CI lint step fails the build if `domain/` imports anything outside itself, or if `transport/` imports `infrastructure/`.
 
+> **Amended in P07 (ADR 0007).** A `domain/` package may import a package under
+> `internal/shared/` *only when that shared package itself imports nothing
+> internal* — a pure value object such as `money` or `schedule`. The guard
+> verifies the shared package's own imports rather than trusting a list, so a
+> domain still depends on nothing that depends on anything. The alternative was
+> five copies of money, which would not have stayed identical.
+
 ## 2.3 Repository pattern
 
 Every data access goes through an interface declared in `application/ports/`. Implementations live in `infrastructure/persistence/`. No use case ever touches a database handle.

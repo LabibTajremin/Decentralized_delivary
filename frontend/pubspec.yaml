@@ -1,0 +1,22 @@
+# Dart pub workspace root for the three GoKlay apps and the foundation they
+# share.
+#
+# This file is not a package anyone ships. It exists so that `flutter pub get`
+# resolves every package under frontend/ against one shared lockfile, and so
+# that `flutter analyze` run here covers all of them at once — which is exactly
+# what scripts/verify.sh does.
+#
+# P17 added goklay_core, P18 the customer app, P19 the merchant and partner
+# apps. One `flutter pub get` here resolves all four.
+name: goklay_frontend
+description: Workspace root for the GoKlay Flutter apps. Not a shippable package.
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - goklay_core
+  - customer
+  - merchant
+  - partner

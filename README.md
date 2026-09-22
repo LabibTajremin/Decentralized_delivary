@@ -18,7 +18,8 @@ stops hard at their division boundary.
 
 ## Quickstart
 
-Requires Go 1.24 and Docker.
+Requires Go 1.25 and Docker. Building the apps additionally needs Flutter
+3.47.5, which CI is pinned to.
 
 ```bash
 git clone https://github.com/LabibTajremin/Decentralized_delivary.git
@@ -26,14 +27,39 @@ cd Decentralized_delivary
 
 docker compose up -d postgres redis    # PostGIS + Redis
 cd backend && go build ./... && go run ./cmd/api
-curl localhost:8080/healthz            # {"status":"ok"}
+curl localhost:8080/healthz            # {"status":"ok"}  — liveness
+curl localhost:8080/readyz             # {"status":"ready"} — both stores reachable
 ```
 
-Run the test suite and the coverage gate:
+To sign in and actually use it, run the migrations and the seed, and set
+`DEMO_MODE=true` so one-time codes come back in the response instead of going
+to an SMS gateway that does not exist yet. That also gives you seven seeded
+accounts — two customers, two shop owners, two riders and an admin — each
+already owning what their app is about. **`docs/demo.md`** has the numbers and
+a walkthrough of a whole delivery.
+
+To put it on a server, **`docs/deployment.md`** is the step-by-step, and
+`deploy/` holds a ready-to-run Compose stack — Postgres with PostGIS, Redis,
+the API, Caddy for automatic TLS, and the dispatch heartbeat — that needs a
+domain, a filled `.env` and `docker compose up -d`.
+
+One command runs every gate CI runs, in CI's order, and starts Postgres and
+Redis for you:
 
 ```bash
-./scripts/coverage-gate.sh       # backend tests, gated at 100%
-./scripts/thin-client-lint.sh    # no business rules in the Flutter apps
+./scripts/verify.sh
+```
+
+It keeps going after a failure so you see all of them, and prints a list at
+the end. Nothing in this repository is considered finished until it exits 0.
+The individual gates are also runnable on their own:
+
+```bash
+./scripts/coverage-gate.sh          # backend tests, gated at 100%
+./scripts/thin-client-lint.sh       # no business rules in the Flutter apps
+./scripts/flutter-coverage-gate.sh  # all four Dart packages, gated at 100%
+./scripts/apk-size-check.sh         # three release APKs against a 20 MB ceiling
+./scripts/vuln-scan.sh              # govulncheck; needs network, so not in verify.sh
 ```
 
 Tests live in their own module, so they can also be run directly:
@@ -85,6 +111,54 @@ a rewrite.
 **Flutter for the frontend.** One codebase for three apps across both platforms,
 on an audience that is overwhelmingly Android.
 
+**Adapters at every edge.** Nothing outside the process is called directly.
+The database, Redis, the SMS gateway and the payment gateway each sit behind a
+port the application layer owns, with the concrete implementation in
+`infrastructure/`. Two of those ports currently hold working stand-ins —
+`sms.LogSender` and `gateway/manual.Gateway` — and **both refuse to be
+constructed when `APP_ENV=production`**, so a production deployment with no
+real provider does not start rather than accepting sign-ins it writes to the
+log or marking orders paid for free. Writing the real provider means writing
+one file behind an existing port; `docs/runbook.md` §0 treats both as release
+blockers.
+
+**Flutter with no state-management package** (ADR 0008). `ChangeNotifier`,
+Navigator 1.0, an `InheritedWidget` for injection, hand-written `fromJson`.
+Because the client decides nothing, client state is only ever "loading, data,
+or failed" — and every code-generating package would be a new hole in the 100%
+coverage gate. `frontend/coverage-exclusions.txt` is deliberately empty.
+
+**One shared Dart package in a pub workspace** (ADR 0009). `goklay_core` holds
+the tokens, the theme, the accessibility floor, the localisation, the
+transport, the state primitives and the whole sign-in flow; the three apps are
+mostly screens. Three APKs at ~17.2–17.5 MB against a 20 MB ceiling, gated
+against 10% growth.
+
+**Offline: a read-through cache everywhere, a write queue in one place**
+(ADR 0010). Every GET is cached and served stale *with a banner saying so*.
+Exactly one screen queues writes — the rider's job screen, where "collected"
+and "delivered" must arrive in that order or not at all. Nowhere else, and
+each screen's user documentation says why not.
+
+**Bengali-first, with string tables written by hand** (ADR 0011). About thirty
+client strings, because everything else is composed by the server. Bengali is
+first in `supportedLocales`, so an unrecognised device locale lands on Bengali
+rather than English; `?lang=en` is sent only for English. Both tables are
+tested, including that the Bengali one is actually in Bengali script.
+
+**The merchant and partner apps are built from the API, not from a design**
+(ADR 0012). The Figma file contains no merchant or partner screens — 10,456
+nodes searched. Rather than invent two apps' worth of visual design, their
+layout comes from the endpoints behind them and their look entirely from
+`goklay_core`. `docs/design-gaps.md` records this and every other place the
+design and the backend do not line up.
+
+**Authorisation by resource ownership outside `/v1/admin/`** (ADR 0013). The
+admin surface is guarded by role, and that guard is swept rather than listed:
+a test reads the OpenAPI document and requires every admin operation to refuse
+all three non-admin roles. Everywhere else, a caller is stopped by not owning
+the resource, and somebody else's resource answers 404 rather than 403.
+
 **Modular monolith, split-ready** (ADR 0001). Fourteen modules with enforced
 walls: a module may never import another module's internals, only its public
 contract, and only from its own `external/` package. Extraction to a service
@@ -128,3 +202,10 @@ wiring and vendored code may be excluded, each with a justification in
 - `docs/technical/` — one file per source file: responsibility, inputs, rules, failure modes
 - `docs/user/` — one file per screen, per role
 - `docs/decisions/` — why things are the way they are
+- `docs/deployment.md` — getting it onto a server, start to finish
+- `docs/demo.md` — running it as a public demonstration, and the demo accounts
+- `docs/design-gaps.md` — where the design and the backend do not line up, and why
+- `docs/security-review.md` — what was checked, what was fixed, what is accepted
+- `docs/runbook.md` — running it in production: config, probes, incidents, the one thing you must schedule
+- `docs/load-test.md` — the discovery and dispatch load gates, and the last measurements
+- `BUILD_COMPLETE.md` — what was built, and what is left
