@@ -141,7 +141,12 @@ void main() {
       final Dependencies dependencies = await harnessDependencies(backend);
       await pumpScreen(
         tester,
-        const ProfileScreen(),
+        // Keyed, so this is a runtime construction rather than a compile-time
+        // constant. Every other call site is `const`, which canonicalises the
+        // constructor and never executes it — and the coverage gate then
+        // passes or fails on which isolate materialised the constant first.
+        // CashScreen in the partner app failed CI exactly this way.
+        ProfileScreen(key: UniqueKey()),
         dependencies: dependencies,
       );
       await tester.pumpAndSettle();
@@ -448,7 +453,8 @@ void main() {
       final Dependencies dependencies = await harnessDependencies(backend);
       await pumpScreen(
         tester,
-        const NotificationsScreen(),
+        // Keyed for the same reason ProfileScreen above is.
+        NotificationsScreen(key: UniqueKey()),
         dependencies: dependencies,
       );
       await tester.pumpAndSettle();

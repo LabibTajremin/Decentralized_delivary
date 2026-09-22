@@ -508,22 +508,38 @@ void main() {
   });
 
   group('the ledger screen', () {
-    testWidgets('it prints both totals and what is being carried', (
-      WidgetTester tester,
-    ) async {
-      route('GET /v1/partner/cod', (_) => ledgerJson());
-      final Dependencies dependencies = await harnessDependencies(backend);
-      await pumpScreen(
-        tester,
-        const CashScreen(),
-        dependencies: dependencies,
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('৳ ৭০০'), findsWidgets);
-      expect(find.text('৳ ১,২০০'), findsOneWidget);
-      expect(find.text('ord-1'), findsOneWidget);
-      dependencies.dispose();
-    });
+    // Both values of showBack, which is the screen's only parameter and was
+    // not asserted anywhere: the shell builds this tab with showBack: false
+    // because a tab is not something you go back from, and the pushed screen
+    // takes the default.
+    //
+    // Constructing it from a loop variable rather than as `const` is also
+    // what makes the constructor run. Every other call site in the app and
+    // the tests is a compile-time constant, so the constructor is
+    // canonicalised and never executes — which left its line covered or not
+    // depending on which isolate happened to materialise the constant first,
+    // and failed the coverage gate on CI while passing on every local run.
+    for (final bool showBack in <bool>[true, false]) {
+      testWidgets('it prints both totals and what is being carried '
+          '(showBack: $showBack)', (WidgetTester tester) async {
+        route('GET /v1/partner/cod', (_) => ledgerJson());
+        final Dependencies dependencies = await harnessDependencies(backend);
+        await pumpScreen(
+          tester,
+          CashScreen(showBack: showBack),
+          dependencies: dependencies,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('৳ ৭০০'), findsWidgets);
+        expect(find.text('৳ ১,২০০'), findsOneWidget);
+        expect(find.text('ord-1'), findsOneWidget);
+        expect(
+          tester.widget<GoklayScaffold>(find.byType(GoklayScaffold)).showBack,
+          showBack,
+        );
+        dependencies.dispose();
+      });
+    }
 
     testWidgets('a settled rider is told there is nothing to hand over', (
       WidgetTester tester,
