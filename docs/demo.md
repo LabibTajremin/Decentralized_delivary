@@ -131,6 +131,10 @@ offered.
 
 ## Deploying it
 
+`docs/deployment.md` is the full guide, and `deploy/` holds a Compose stack
+that already has `DEMO_MODE` wired in. The short version, if you are running
+the binary yourself:
+
 ```bash
 # 1. Postgres with PostGIS, and Redis. Then:
 export APP_ENV=staging
@@ -155,7 +159,7 @@ curl -fsS $PUBLIC_BASE_URL/readyz    # {"status":"ready"}
 `staging` so the logs say what this is.
 
 **Build the apps against the same `PUBLIC_BASE_URL`**, which ships inside the
-APK as `--dart-define=API_BASE_URL`. Getting it wrong means a new build, not a
+APK as `--dart-define=GOKLAY_API_BASE_URL`. Getting it wrong means a new build, not a
 config change.
 
 **Put TLS in front of it.** The API speaks plain HTTP; a demo is still a public

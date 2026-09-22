@@ -4,8 +4,9 @@ What an operator needs to run GoKlay: what to set, what to start, what to
 watch, and what to do at 3am. Everything here was read out of the code rather
 than assumed, and where the code makes a decision for you, this says so.
 
-`README.md` gets you a stack running locally. This is the other document: the
-one for the deployment nobody is watching.
+`README.md` gets you a stack running locally, and `docs/deployment.md` gets it
+onto a server for the first time. This is the document after those: the one
+for the deployment nobody is watching.
 
 ---
 
@@ -99,7 +100,7 @@ token for any user, including another admin. Environment or secrets manager
 only.
 
 `PUBLIC_BASE_URL` is compiled into the mobile apps as
-`--dart-define=API_BASE_URL`. Getting it wrong means a new build, not a
+`--dart-define=GOKLAY_API_BASE_URL`. Getting it wrong means a new build, not a
 config change. Decide it before the first release.
 
 ---

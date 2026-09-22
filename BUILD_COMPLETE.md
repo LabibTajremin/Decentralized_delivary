@@ -94,6 +94,9 @@ second with its own ADR — and an **empty** frontend one.
   three prose deliverables.
 * `docs/demo.md` — deploying it as a public demonstration, the demo accounts,
   and a walkthrough of a whole delivery.
+* `docs/deployment.md` and `deploy/` — a ready-to-run Compose stack (Postgres
+  with PostGIS, Redis, the API, Caddy, the dispatch heartbeat) and the
+  step-by-step behind it.
 
 ---
 

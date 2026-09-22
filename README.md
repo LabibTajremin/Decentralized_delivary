@@ -38,6 +38,11 @@ accounts — two customers, two shop owners, two riders and an admin — each
 already owning what their app is about. **`docs/demo.md`** has the numbers and
 a walkthrough of a whole delivery.
 
+To put it on a server, **`docs/deployment.md`** is the step-by-step, and
+`deploy/` holds a ready-to-run Compose stack — Postgres with PostGIS, Redis,
+the API, Caddy for automatic TLS, and the dispatch heartbeat — that needs a
+domain, a filled `.env` and `docker compose up -d`.
+
 One command runs every gate CI runs, in CI's order, and starts Postgres and
 Redis for you:
 
@@ -197,6 +202,7 @@ wiring and vendored code may be excluded, each with a justification in
 - `docs/technical/` — one file per source file: responsibility, inputs, rules, failure modes
 - `docs/user/` — one file per screen, per role
 - `docs/decisions/` — why things are the way they are
+- `docs/deployment.md` — getting it onto a server, start to finish
 - `docs/demo.md` — running it as a public demonstration, and the demo accounts
 - `docs/design-gaps.md` — where the design and the backend do not line up, and why
 - `docs/security-review.md` — what was checked, what was fixed, what is accepted

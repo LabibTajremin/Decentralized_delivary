@@ -1,5 +1,5 @@
 # BUILD STATE
-last_updated: 2026-09-22T12:00:00Z
+last_updated: 2026-09-22T14:00:00Z
 current_phase: P20
 current_task: none — the build is complete
 current_branch: claude/goklay-design-system-9z500x
@@ -110,6 +110,33 @@ deployment where **anyone can sign in as anyone**, because the code is handed
 to whoever asks. And `auth.otp_requests_per_hour` defaults to 5 per number per
 hour, which is a few minutes of traffic when everybody shares seven numbers —
 raise it to 20 through the ordinary admin config surface.
+
+## Deployment (done)
+
+`docs/deployment.md` is the step-by-step, and `deploy/` is a ready-to-run
+Compose stack: Postgres with PostGIS, Redis, the API, Caddy for automatic TLS,
+and the dispatch heartbeat. `cp .env.example .env`, fill in five values,
+`docker compose up -d`.
+
+Three changes were needed to make that true rather than aspirational:
+
+* **The image now ships `cmd/migrate` beside `cmd/api`**, so a server needs no
+  Go toolchain: `docker compose run --rm --entrypoint /migrate api up`.
+  Also `go.sum` is copied with `go.mod`, and a `.dockerignore` keeps the test
+  module out of the build context.
+* **`deploy/sweep.sh`** solves the awkward part of the dispatch heartbeat —
+  the admin surface needs a token and tokens come from one-time codes. On a
+  demo it signs itself in with the revealed code; anywhere else it holds a
+  refresh token and rotates it. Both paths were run against a live API.
+* **The documented `--dart-define` key was wrong** in `runbook.md`, `demo.md`
+  and `.env.example`: it is `GOKLAY_API_BASE_URL`, not `API_BASE_URL`. A build
+  with the wrong key silently falls back to `http://10.0.2.2:8080`, which
+  works on an Android emulator and fails on a real phone — so the error would
+  have looked like a network bug. Fixed in all three.
+
+Unverified, because this container has no Docker daemon: the image build
+itself. `docker compose config` parses and resolves, and both binaries build
+with `go build`, but nobody has run `docker compose up -d --build` here.
 
 ## Nothing is left, in build terms
 
