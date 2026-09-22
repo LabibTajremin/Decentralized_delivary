@@ -1,0 +1,19 @@
+# Go
+/backend/api
+*.test
+coverage.out
+coverage.raw.out
+coverage.html
+
+# Flutter — scoped to frontend/ so docs/build and backend/build are not swallowed
+frontend/**/.dart_tool/
+frontend/**/.packages
+frontend/**/build/
+frontend/**/coverage/
+frontend/**/*.iml
+
+# Tooling
+.idea/
+.vscode/
+.DS_Store
+*.log
