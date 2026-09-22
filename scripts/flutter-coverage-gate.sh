@@ -40,6 +40,26 @@ while IFS= read -r pubspec; do
   echo "coverage (${app_dir}): ${pct}% (gate ${GATE}%)"
   if awk -v p="${pct}" -v g="${GATE}" 'BEGIN{exit !(p+0 < g+0)}'; then
     echo "FAIL: ${app_dir} coverage ${pct}% is below the ${GATE}% gate" >&2
+
+    # Name the lines, the way the backend gate names its functions.
+    #
+    # A gate that prints only a percentage is undiagnosable when it fails
+    # somewhere you are not: the runner is gone by the time anybody reads the
+    # log, and "99.9%" over nine hundred lines says nothing about which one.
+    # That is not hypothetical — it happened on this repository, and finding
+    # the line meant pushing a commit to ask.
+    awk -F: '
+      /^SF:/ { file = substr($0, 4) }
+      /^DA:/ { split(substr($0, 4), d, ","); if (d[2] + 0 == 0) print file ":" d[1] }
+    ' "${lcov}" | while IFS=: read -r f l; do
+      # lcov writes paths relative to the package, but not always.
+      src_file="${f}"
+      [[ -f "${src_file}" ]] || src_file="${app_dir}/${f}"
+      line=""
+      [[ -f "${src_file}" ]] && line="$(sed -n "${l}p" "${src_file}" | sed 's/^[[:space:]]*//')"
+      printf '  %s:%s  %s\n' "${f}" "${l}" "${line}"
+    done >&2
+
     exit 1
   fi
 done < <(find "${REPO_ROOT}/frontend" -name pubspec.yaml -not -path '*/.*')
