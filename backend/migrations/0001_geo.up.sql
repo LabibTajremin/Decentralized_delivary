@@ -9,7 +9,12 @@
 -- PostGIS is required: ALG-01 (merchants within radius) needs ST_DWithin over a
 -- GiST index, and ALG-03 (division boundary) needs ST_Contains. See
 -- docs/decisions/0003-postgis-geospatial.md.
-CREATE EXTENSION IF NOT EXISTS postgis;
+-- SCHEMA public for the same reason 0006 pins pg_trgm: an extension created
+-- under a caller's own search_path is invisible to every other schema. This
+-- one has not bitten because the postgis Docker image pre-installs it into
+-- public, which makes the statement a no-op — but that is the image's
+-- kindness, not a guarantee.
+CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public;
 
 CREATE TABLE IF NOT EXISTS geo_divisions (
     code        TEXT PRIMARY KEY,

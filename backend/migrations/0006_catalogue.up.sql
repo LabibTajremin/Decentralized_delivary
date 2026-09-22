@@ -170,7 +170,19 @@ CREATE INDEX IF NOT EXISTS catalogue_items_category_idx
 
 -- Searching a grocery's aisles by name. Trigram rather than a prefix index
 -- because a customer types "chal" for "Miniket Chal" as often as not.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- SCHEMA public, explicitly. Without it the extension lands in whatever is
+-- first on the caller's search_path, and the test harness gives each suite a
+-- schema of its own (tests/dbtest). Extension names are database-global but
+-- their objects live in one schema, so the first suite to run would own
+-- pg_trgm, every other suite's IF NOT EXISTS would quietly no-op, and their
+-- CREATE INDEX below would fail with "operator class gin_trgm_ops does not
+-- exist" — on a fresh database only, which is why CI saw it and nobody's
+-- laptop did.
+--
+-- Harmless where the extension already exists elsewhere: IF NOT EXISTS makes
+-- the whole statement a no-op, schema clause included, which is what a
+-- managed Postgres that pre-installs into its own extensions schema needs.
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public;
 CREATE INDEX IF NOT EXISTS catalogue_items_name_trgm_idx
     ON catalogue_items USING GIN (lower(name) gin_trgm_ops);
 
