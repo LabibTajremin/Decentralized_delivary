@@ -2,6 +2,11 @@
 
 How to get GoKlay running on a server, start to finish.
 
+There is a Word version of this guide at **`docs/deployment.docx`**, written for
+a developer who has never worked on this project — it opens with a chapter on
+what the system is before it gets to the commands. Hand that one to somebody
+new; the two say the same thing.
+
 `docs/runbook.md` is for operating it once it is up — probes, incidents,
 backups, rollback. This is the part before that: what to provision, what to
 set, what to run, and how to tell it worked.

@@ -203,6 +203,8 @@ wiring and vendored code may be excluded, each with a justification in
 - `docs/user/` — one file per screen, per role
 - `docs/decisions/` — why things are the way they are
 - `docs/deployment.md` — getting it onto a server, start to finish
+- `docs/deployment.docx` — the same guide as a Word document, written for a
+  developer who has not worked on this project (hand this one out)
 - `docs/demo.md` — running it as a public demonstration, and the demo accounts
 - `docs/design-gaps.md` — where the design and the backend do not line up, and why
 - `docs/security-review.md` — what was checked, what was fixed, what is accepted
